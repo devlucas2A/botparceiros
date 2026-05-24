@@ -65,8 +65,23 @@ export async function updateWelcomeConfig(prevState: GuildConfigState, formData:
         const bannerFile = formData.get("welcome_banner") as File;
         let bannerUrl = null;
 
+        console.log("[Welcome Upload] bannerFile:", {
+            exists: !!bannerFile,
+            name: bannerFile?.name,
+            size: bannerFile?.size,
+            type: bannerFile?.type,
+        });
+
         if (bannerFile && bannerFile.size > 0) {
-            bannerUrl = await uploadImage(bannerFile);
+            try {
+                bannerUrl = await uploadImage(bannerFile);
+                console.log("[Welcome Upload] Sucesso, URL:", bannerUrl);
+            } catch (err) {
+                console.error("[Welcome Upload] Falha no Cloudinary:", err);
+                return { success: false, error: "Falha ao fazer upload da imagem. Verifique credenciais do Cloudinary." };
+            }
+        } else {
+            console.log("[Welcome Upload] Nenhum arquivo enviado, mantendo banner atual.");
         }
         
         const currentConfig = await database.getGuildConfig(data.guildId);

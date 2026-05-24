@@ -11,7 +11,29 @@ import { logger } from '../../shared/services';
 // 🎨 CONSTANTES & UTILS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PREFERRED_FONT = 'sans-serif';
+const PREFERRED_FONT = 'NotoSans';
+
+// Registra NotoSans (bundled em fonts/) como fallback universal.
+// node-canvas no Linux do Railway pode nao ter sans-serif decente,
+// causando tofu (□). NotoSans cobre latim, acentos e emojis basicos.
+let notoRegistered = false;
+function ensureFallbackFont() {
+    if (notoRegistered) return;
+    try {
+        const fontsDir = path.resolve(process.cwd(), 'fonts');
+        const noto = path.join(fontsDir, 'NotoSans-Regular.ttf');
+        if (fs.existsSync(noto)) {
+            const { registerFont } = require('canvas');
+            registerFont(noto, { family: 'NotoSans' });
+            logger.info('[font] NotoSans registrada como fallback');
+            notoRegistered = true;
+        } else {
+            logger.warn(`[font] NotoSans-Regular.ttf nao encontrada em ${fontsDir}`);
+        }
+    } catch (e: any) {
+        logger.warn(`[font] Falha ao registrar NotoSans: ${e.message}`);
+    }
+}
 
 async function fetchWithTimeout(url: string, timeout = 5000, headers: Record<string, string> = { 'User-Agent': 'DiscordBot/1.0' }): Promise<Response> {
     const controller = new AbortController();
@@ -43,6 +65,8 @@ const LEGACY_UAS = [
 ];
 
 async function loadAndRegisterGoogleFont(fontFamily: string): Promise<string> {
+    ensureFallbackFont(); // Garante NotoSans disponivel mesmo se o Google falhar
+
     if (registeredFonts.has(fontFamily)) return fontFamily;
 
     const cssUrl = `https://fonts.googleapis.com/css?family=${fontFamily.replace(/ /g, '+')}`;
@@ -55,10 +79,11 @@ async function loadAndRegisterGoogleFont(fontFamily: string): Promise<string> {
 
             const css = await cssResp.text();
 
-            // Aceita TTF, OTF e WOFF (mas nao WOFF2)
-            const match = css.match(/url\((https:\/\/[^)]+\.(?:ttf|otf|woff))\)/i);
+            // Aceita SOMENTE TTF/OTF — node-canvas tem suporte parcial a WOFF
+            // e renderiza tofu (□) em muitos casos. Melhor cair no fallback.
+            const match = css.match(/url\((https:\/\/[^)]+\.(?:ttf|otf))\)/i);
             if (!match) {
-                logger.info(`[font] UA "${ua.slice(0, 30)}..." nao deu TTF/OTF/WOFF para ${fontFamily}, tentando proximo`);
+                logger.info(`[font] UA "${ua.slice(0, 30)}..." nao deu TTF/OTF para ${fontFamily}, tentando proximo`);
                 continue;
             }
 
@@ -68,7 +93,7 @@ async function loadAndRegisterGoogleFont(fontFamily: string): Promise<string> {
             const arrayBuffer = await fontResp.arrayBuffer();
 
             // Detecta extensao pela URL para escrever com extensao correta
-            const ext = (fontUrl.match(/\.(ttf|otf|woff)$/i)?.[1] || 'ttf').toLowerCase();
+            const ext = (fontUrl.match(/\.(ttf|otf)$/i)?.[1] || 'ttf').toLowerCase();
             const fontPath = path.join(os.tmpdir(), `${fontFamily.replace(/ /g, '_')}_coreia.${ext}`);
             fs.writeFileSync(fontPath, Buffer.from(arrayBuffer));
 
@@ -82,7 +107,7 @@ async function loadAndRegisterGoogleFont(fontFamily: string): Promise<string> {
         }
     }
 
-    logger.warn(`[font] Nao foi possivel obter ${fontFamily} em formato suportado — usando fallback sans-serif`);
+    logger.warn(`[font] Nao foi possivel obter ${fontFamily} em formato suportado — usando NotoSans (fallback)`);
     return PREFERRED_FONT;
 }
 
@@ -289,6 +314,7 @@ export async function generateBanner(
     const H = 360;
     const canvas = createCanvas(W, H);
     const ctx = canvas.getContext('2d');
+    ensureFallbackFont();
     const selectedFont = font ? await loadAndRegisterGoogleFont(font) : PREFERRED_FONT;
 
     // ─── Fundo ──────────────────────────────────────────────────────────
@@ -416,6 +442,7 @@ export async function generateBannerFast(
     const H = 360;
     const canvas = createCanvas(W, H);
     const ctx = canvas.getContext('2d');
+    ensureFallbackFont();
     const selectedFont = font ? await loadAndRegisterGoogleFont(font) : PREFERRED_FONT;
 
     // Fundo (suporta URL HTTP ou caminho local)

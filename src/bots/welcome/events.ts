@@ -3,13 +3,24 @@ import { getGuildConfig, logger } from '../../shared/services';
 import { generateBanner, generateBannerFast } from './welcome.service';
 import { trackEvent } from '../../shared/services/analytics.service';
 
+// Guarda se já registramos os listeners — defesa contra dupla
+// chamada do setupWelcomeEvents() (nodemon hot-reload, importacao
+// circular, etc). NAO previne 2 instancias do bot rodando.
+let welcomeEventsRegistered = false;
+
 export function setupWelcomeEvents(client: Client) {
-    logger.info('🌌 Módulo Welcome: Eventos inicializados (guildMemberAdd + guildMemberRemove)');
+    if (welcomeEventsRegistered) {
+        logger.warn(`[Welcome] setupWelcomeEvents ja foi chamado neste processo (pid ${process.pid}), ignorando duplicata.`);
+        return;
+    }
+    welcomeEventsRegistered = true;
+
+    logger.info(`🌌 Módulo Welcome (pid ${process.pid}): Eventos inicializados (guildMemberAdd + guildMemberRemove)`);
     logger.info('   ℹ️ Estes eventos exigem o "SERVER MEMBERS INTENT" habilitado no Discord Developer Portal.');
 
     // Welcome
     client.on('guildMemberAdd', async (member: GuildMember) => {
-        logger.info(`[Welcome] guildMemberAdd disparou: ${member.user.tag} em ${member.guild.id}`);
+        logger.info(`[Welcome] [pid ${process.pid}] guildMemberAdd disparou: ${member.user.tag} em ${member.guild.id}`);
         if (member.user.bot) {
             logger.info(`[Welcome] Ignorado: ${member.user.tag} e bot`);
             return;
@@ -94,7 +105,7 @@ export function setupWelcomeEvents(client: Client) {
     client.on('guildMemberRemove', async (member) => {
         const guildMember = member as GuildMember;
         const tag = guildMember.user?.tag || guildMember.id;
-        logger.info(`[Leave] guildMemberRemove disparou: ${tag} em ${guildMember.guild?.id}`);
+        logger.info(`[Leave] [pid ${process.pid}] guildMemberRemove disparou: ${tag} em ${guildMember.guild?.id}`);
         if (guildMember.user?.bot) {
             logger.info(`[Leave] Ignorado: ${tag} e bot`);
             return;
