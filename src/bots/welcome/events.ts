@@ -149,10 +149,11 @@ export function setupWelcomeEvents(client: Client) {
             const messageText = config.leave_message || 'Adeus {user}!';
             let buffer: Buffer;
 
+            // Usa o mesmo banner do welcome — temos so um campo no painel
             try {
-                buffer = await generateBanner(guildMember, messageText, null, config.welcome_font, 'leave');
+                buffer = await generateBanner(guildMember, messageText, config.welcome_banner_url, config.welcome_font, 'leave');
             } catch (error) {
-                buffer = await generateBannerFast(guildMember, messageText, null, config.welcome_font, 'leave');
+                buffer = await generateBannerFast(guildMember, messageText, config.welcome_banner_url, config.welcome_font, 'leave');
             }
 
             const attachment = new AttachmentBuilder(buffer, { name: 'leave.png' });
