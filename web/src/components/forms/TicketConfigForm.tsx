@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Settings, Save, LayoutTemplate, Lock } from "lucide-react";
 import { useState } from "react";
 import { Check, X } from "lucide-react";
+import { ChannelSelect } from "@/components/discord/ChannelSelect";
 
 interface TicketConfigFormProps {
     guildId: string;
@@ -289,18 +290,16 @@ export function TicketConfigForm({ guildId, initialConfig, userPlan }: TicketCon
                         </CardHeader>
                         <CardContent className="space-y-5 p-6">
                             <div className="space-y-2">
-                                <Label htmlFor="logsChannelId" className="text-zinc-300">ID do Canal de Logs</Label>
-                                <Input
-                                    id="logsChannelId"
-                                    name="logsChannelId"
-                                    placeholder="Ex: 123456789012345678"
+                                <Label className="text-zinc-300">Canal de Logs</Label>
+                                <ChannelSelect
+                                    guildId={guildId}
                                     value={config.logsChannelId}
-                                    onChange={handleInputChange}
-                                    className="bg-zinc-900/50 border-zinc-800 text-white focus:ring-violet-500/50 placeholder:text-zinc-600 font-mono"
+                                    onChange={(v) => setConfig(prev => ({ ...prev, logsChannelId: v }))}
+                                    placeholder="Selecione um canal de texto..."
                                 />
+                                <input type="hidden" name="logsChannelId" value={config.logsChannelId} />
                                 <p className="text-xs text-zinc-500">
-                                    Copie o ID do canal onde deseja receber os transcripts dos tickets fechados.
-                                    (Ative o Modo Desenvolvedor do Discord para copiar IDs)
+                                    Canal onde os transcripts dos tickets fechados serão enviados.
                                 </p>
                             </div>
                         </CardContent>

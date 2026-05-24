@@ -11,6 +11,8 @@ import { updateWelcomeConfig } from "@/actions/guild-actions";
 import { Textarea } from "@/components/ui/textarea";
 import { Hand, ShieldAlert, Type, UserPlus, LogOut, ShieldCheck, Image as ImageIcon, Sparkles, Save, Link, MessageSquare, CloudUpload, ChevronDown, Check } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
+import { ChannelSelect } from "@/components/discord/ChannelSelect";
+import { RoleSelect } from "@/components/discord/RoleSelect";
 
 interface AutoModConfig {
     guild_id: string;
@@ -76,6 +78,9 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
     const [selectedFont, setSelectedFont] = useState(config?.welcome_font || 'Inter');
     const [welcomeMessage, setWelcomeMessage] = useState(config?.welcome_message || "Bem-vindo {user} ao servidor!");
     const [bannerPreview, setBannerPreview] = useState(config?.welcome_banner_url || null);
+    const [welcomeChannel, setWelcomeChannel] = useState<string>(config?.welcome_channel_id || '');
+    const [leaveChannel, setLeaveChannel] = useState<string>(config?.leave_channel_id || '');
+    const [autoroleId, setAutoroleId] = useState<string>(config?.autorole_id || '');
     
     // Dropdown state
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -187,15 +192,13 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
                                     Mensagem de Boas-vindas
                                 </Label>
                                 <div className="grid gap-3">
-                                    <div className="relative group/input">
-                                        <Input
-                                            id="welcome-channel"
-                                            name="welcomeChannelId"
-                                            placeholder="ID do Canal"
-                                            defaultValue={config?.welcome_channel_id || ''}
-                                            className="bg-black/50 border-white/10 text-white rounded-xl focus:border-blue-500/50 h-10 pl-3 transition-all group-hover/input:border-white/20 font-mono text-xs"
-                                        />
-                                    </div>
+                                    <ChannelSelect
+                                        guildId={guildId}
+                                        value={welcomeChannel}
+                                        onChange={setWelcomeChannel}
+                                        placeholder="Selecione o canal de boas-vindas..."
+                                    />
+                                    <input type="hidden" name="welcomeChannelId" value={welcomeChannel} />
                                     <div className="relative group/input">
                                         <Textarea
                                             id="welcome-msg"
@@ -219,15 +222,13 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
                                         Mensagem de Saída
                                     </Label>
                                     <div className="grid gap-3">
-                                        <div className="relative group/input">
-                                            <Input
-                                                id="leave-channel"
-                                                name="leaveChannelId"
-                                                placeholder="ID do Canal"
-                                                defaultValue={config?.leave_channel_id || ''}
-                                                className="bg-black/50 border-white/10 text-white rounded-xl focus:border-blue-500/50 h-10 pl-3 transition-all group-hover/input:border-white/20 font-mono text-xs"
-                                            />
-                                        </div>
+                                        <ChannelSelect
+                                            guildId={guildId}
+                                            value={leaveChannel}
+                                            onChange={setLeaveChannel}
+                                            placeholder="Selecione o canal de saída..."
+                                        />
+                                        <input type="hidden" name="leaveChannelId" value={leaveChannel} />
                                         <div className="relative group/input">
                                             <Textarea
                                                 id="leave-msg"
@@ -243,21 +244,19 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
 
                             <div className="grid grid-cols-1 gap-5 pt-4 md:pt-0 border-t border-white/5 md:border-t-0 md:pl-5 md:border-l">
                                 <div className="space-y-3">
-                                    <Label htmlFor="autorole" className="text-sm font-medium text-zinc-300 flex items-center gap-2">
+                                    <Label className="text-sm font-medium text-zinc-300 flex items-center gap-2">
                                         <div className="p-1.5 rounded-lg bg-white/5">
                                             <ShieldCheck className="w-3.5 h-3.5 text-green-400" />
                                         </div>
-                                        Auto-Role (ID)
+                                        Auto-Role
                                     </Label>
-                                    <div className="relative group/input">
-                                        <Input
-                                            id="autorole"
-                                            name="autoroleId"
-                                            placeholder="ID do Cargo"
-                                            defaultValue={config?.autorole_id || ''}
-                                            className="bg-black/50 border-white/10 text-white rounded-xl focus:border-blue-500/50 h-10 pl-3 transition-all group-hover/input:border-white/20 font-mono text-xs"
-                                        />
-                                    </div>
+                                    <RoleSelect
+                                        guildId={guildId}
+                                        value={autoroleId}
+                                        onChange={setAutoroleId}
+                                        placeholder="Selecione o cargo automático..."
+                                    />
+                                    <input type="hidden" name="autoroleId" value={autoroleId} />
                                 </div>
 
                                 <div className="space-y-3">

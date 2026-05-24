@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RoleSelect } from "@/components/discord/RoleSelect";
+import { CategorySelect } from "@/components/discord/CategorySelect";
 
 interface TicketCategory {
     id: string;
@@ -303,28 +305,12 @@ export function TicketForm({ guildId, userId, categories, userPlan }: TicketForm
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="ticketChannelCategoryId" className="text-zinc-300 text-xs uppercase font-bold tracking-wider">ID da Categoria Discord</Label>
-                                    <Input
-                                        id="ticketChannelCategoryId"
-                                        name="ticketChannelCategoryId"
-                                        placeholder="ID da Categoria"
-                                        defaultValue={editingCategory?.ticket_channel_category_id || ''}
-                                        className="bg-zinc-900/50 border-zinc-800 text-white font-mono text-sm placeholder:text-zinc-600"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="supportRoleId" className="text-zinc-300 text-xs uppercase font-bold tracking-wider">ID do Cargo Suporte</Label>
-                                    <Input
-                                        id="supportRoleId"
-                                        name="supportRoleId"
-                                        placeholder="ID do Cargo"
-                                        defaultValue={editingCategory?.support_role_id || ''}
-                                        className="bg-zinc-900/50 border-zinc-800 text-white font-mono text-sm placeholder:text-zinc-600"
-                                    />
-                                </div>
-                            </div>
+                            <TicketDiscordFields
+                                key={editingCategory?.id ?? 'new'}
+                                guildId={guildId}
+                                initialCategoryId={editingCategory?.ticket_channel_category_id || ''}
+                                initialSupportRoleId={editingCategory?.support_role_id || ''}
+                            />
 
                             <div className="border-t border-zinc-800 pt-4 mt-2">
                                 <h3 className="text-sm font-medium text-violet-400 mb-4">Personalização da Mensagem de Boas-vindas</h3>
@@ -362,6 +348,46 @@ export function TicketForm({ guildId, userId, categories, userPlan }: TicketForm
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ─── Subcomponente: campos Discord (categoria + cargo suporte) ────────────
+// Recebe key={editingCategory.id} no pai para resetar state ao trocar.
+function TicketDiscordFields({
+    guildId,
+    initialCategoryId,
+    initialSupportRoleId,
+}: {
+    guildId: string;
+    initialCategoryId: string;
+    initialSupportRoleId: string;
+}) {
+    const [categoryId, setCategoryId] = useState(initialCategoryId);
+    const [supportRoleId, setSupportRoleId] = useState(initialSupportRoleId);
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+                <Label className="text-zinc-300 text-xs uppercase font-bold tracking-wider">Categoria do Discord</Label>
+                <CategorySelect
+                    guildId={guildId}
+                    value={categoryId}
+                    onChange={setCategoryId}
+                    placeholder="Selecione uma categoria..."
+                />
+                <input type="hidden" name="ticketChannelCategoryId" value={categoryId} />
+            </div>
+            <div className="space-y-2">
+                <Label className="text-zinc-300 text-xs uppercase font-bold tracking-wider">Cargo de Suporte</Label>
+                <RoleSelect
+                    guildId={guildId}
+                    value={supportRoleId}
+                    onChange={setSupportRoleId}
+                    placeholder="Selecione um cargo..."
+                />
+                <input type="hidden" name="supportRoleId" value={supportRoleId} />
+            </div>
         </div>
     );
 }

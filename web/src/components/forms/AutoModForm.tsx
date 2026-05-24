@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Hand, ShieldAlert, Type, UserPlus, LogOut, ShieldCheck, Image as ImageIcon, Sparkles, Save, Link, MessageSquare, AlertTriangle, X, Bot, Lock } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePlan } from "@/components/PlanGate";
+import { RoleSelect } from "@/components/discord/RoleSelect";
+import { ChannelSelect } from "@/components/discord/ChannelSelect";
 
 interface AutoModConfig {
     guild_id: string;
@@ -57,6 +59,8 @@ export function AutoModForm({ config, guildId, user }: { config: any, guildId: s
     const [automodAction, setAutomodAction] = useState<AutoModConfig['automod_action']>(
         config?.automod_action || 'delete'
     );
+    const [bypassRoles, setBypassRoles] = useState<string[]>(config?.automod_bypass_roles || []);
+    const [automodChannel, setAutomodChannel] = useState<string>(config?.automod_channel || '');
 
     const handleAddWord = (e: React.KeyboardEvent | React.MouseEvent) => {
         if (e.type === 'keydown' && (e as React.KeyboardEvent).key !== 'Enter') return;
@@ -237,14 +241,15 @@ export function AutoModForm({ config, guildId, user }: { config: any, guildId: s
                                 )}
 
                                 <div className="col-span-1 md:col-span-2 space-y-2">
-                                    <Label htmlFor="automodBypassRoles" className="text-zinc-400 text-sm">Cargos que Ignoram AutoMod</Label>
-                                    <Input
-                                        id="automodBypassRoles"
-                                        name="automodBypassRoles"
-                                        placeholder="IDs dos cargos separados por vírgula (Ex: 123456, 789012)"
-                                        defaultValue={JSON.stringify(config?.automod_bypass_roles || []).replace(/[\[\]"]/g, '')}
-                                        className="bg-black/50 border-white/10 text-white rounded-xl focus:border-violet-500/50 h-10 placeholder:text-zinc-600"
+                                    <Label className="text-zinc-400 text-sm">Cargos que Ignoram AutoMod</Label>
+                                    <RoleSelect
+                                        multi
+                                        guildId={guildId}
+                                        value={bypassRoles}
+                                        onChange={setBypassRoles}
+                                        placeholder="Selecione um ou mais cargos..."
                                     />
+                                    <input type="hidden" name="automodBypassRoles" value={JSON.stringify(bypassRoles)} />
                                 </div>
                             </div>
                         </div>
@@ -301,19 +306,19 @@ export function AutoModForm({ config, guildId, user }: { config: any, guildId: s
 
                         {/* Moderation Log Channel */}
                         <div className="pt-4 border-t border-white/5 space-y-4">
-                            <Label htmlFor="automod-channel" className="text-base font-medium text-zinc-300 flex items-center gap-3">
+                            <Label className="text-base font-medium text-zinc-300 flex items-center gap-3">
                                 <div className="p-2 rounded-lg bg-white/5">
                                     <ShieldCheck className="w-4 h-4 text-blue-400" />
                                 </div>
                                 Canal de Logs (Opcional)
                             </Label>
-                            <Input
-                                id="automod-channel"
-                                name="automodChannelId"
-                                placeholder="ID do Canal de Logs"
-                                defaultValue={config?.automod_channel || ""}
-                                className="bg-black/50 border-white/10 text-white rounded-xl focus:border-blue-500/50 h-12 pl-4 transition-all hover:border-white/20"
+                            <ChannelSelect
+                                guildId={guildId}
+                                value={automodChannel}
+                                onChange={setAutomodChannel}
+                                placeholder="Selecione um canal de texto..."
                             />
+                            <input type="hidden" name="automodChannelId" value={automodChannel} />
                             <p className="text-xs text-zinc-500">
                                 Se definido, notificações de infrações serão enviadas para este canal.
                             </p>

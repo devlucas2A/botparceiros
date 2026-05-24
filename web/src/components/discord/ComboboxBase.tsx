@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, X, Search, Loader2 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -51,17 +52,54 @@ export function Combobox(props: SingleProps | MultiProps) {
     const [open, setOpen] = useState(false);
     const [filter, setFilter] = useState("");
     const containerRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLDivElement>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; openUp: boolean }>({
+        top: 0, left: 0, width: 0, openUp: false,
+    });
+    const [mounted, setMounted] = useState(false);
 
+    useEffect(() => { setMounted(true); }, []);
+
+    // Click fora: ignora cliques dentro do trigger OU do dropdown (portal)
     useEffect(() => {
         if (!open) return;
         const onClick = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-                setOpen(false);
-                setFilter("");
-            }
+            const target = e.target as Node;
+            if (containerRef.current?.contains(target)) return;
+            if (dropdownRef.current?.contains(target)) return;
+            setOpen(false);
+            setFilter("");
         };
         document.addEventListener("mousedown", onClick);
         return () => document.removeEventListener("mousedown", onClick);
+    }, [open]);
+
+    // Recalcula posicao do dropdown ao abrir e em scroll/resize
+    useLayoutEffect(() => {
+        if (!open) return;
+        const updatePos = () => {
+            const trigger = triggerRef.current;
+            if (!trigger) return;
+            const rect = trigger.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            const dropdownHeight = 320; // aprox.: 64 (search) + 64*4 itens visiveis
+            const openUp = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+            setDropdownPos({
+                top: openUp ? rect.top - 4 : rect.bottom + 4,
+                left: rect.left,
+                width: rect.width,
+                openUp,
+            });
+        };
+        updatePos();
+        window.addEventListener("scroll", updatePos, true);
+        window.addEventListener("resize", updatePos);
+        return () => {
+            window.removeEventListener("scroll", updatePos, true);
+            window.removeEventListener("resize", updatePos);
+        };
     }, [open]);
 
     const selectedIds: string[] = props.multi
@@ -108,6 +146,7 @@ export function Combobox(props: SingleProps | MultiProps) {
         <div ref={containerRef} className="relative w-full">
             {/* Trigger */}
             <div
+                ref={triggerRef}
                 onClick={() => !disabled && setOpen(o => !o)}
                 className={clsx(
                     "min-h-10 px-3 py-2 rounded-xl border bg-black/40 text-white text-sm cursor-pointer",
@@ -157,9 +196,20 @@ export function Combobox(props: SingleProps | MultiProps) {
                 </div>
             </div>
 
-            {/* Dropdown */}
-            {open && (
-                <div className="absolute z-50 mt-1 w-full rounded-xl border border-white/10 bg-zinc-950 shadow-xl overflow-hidden">
+            {/* Dropdown via Portal — escapa de overflow-hidden de containers pais */}
+            {open && mounted && createPortal(
+                <div
+                    ref={dropdownRef}
+                    style={{
+                        position: "fixed",
+                        top: dropdownPos.openUp ? "auto" : dropdownPos.top,
+                        bottom: dropdownPos.openUp ? window.innerHeight - dropdownPos.top : "auto",
+                        left: dropdownPos.left,
+                        width: dropdownPos.width,
+                        zIndex: 9999,
+                    }}
+                    className="rounded-xl border border-white/10 bg-zinc-950 shadow-2xl shadow-black/50 overflow-hidden"
+                >
                     {headerMessage && (
                         <div className="px-3 py-2 text-xs text-amber-400 bg-amber-500/5 border-b border-white/5">
                             {headerMessage}
@@ -193,7 +243,8 @@ export function Combobox(props: SingleProps | MultiProps) {
                             ))
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

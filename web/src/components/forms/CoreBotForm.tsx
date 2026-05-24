@@ -1,7 +1,7 @@
 "use client";
 
 import { updateCoreBotConfig } from "@/actions/guild-actions";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEffect } from "react";
 import { Bot, MessageSquare, Save, Sparkles } from "lucide-react";
 import { AiUsageStats } from "../dashboard/AiUsageStats";
+import { ChannelSelect } from "@/components/discord/ChannelSelect";
+import { RoleSelect } from "@/components/discord/RoleSelect";
 
 interface GuildConfig {
     guild_id: string;
@@ -46,6 +48,9 @@ function SubmitButton() {
 
 export function CoreBotForm({ config, guildId }: { config: any, guildId: string }) {
     const [state, formAction] = useActionState(updateCoreBotConfig, {});
+    const [iaChannel, setIaChannel] = useState<string>(config?.ia_channel_id || '');
+    const [ignoredChannels, setIgnoredChannels] = useState<string[]>(config?.ia_ignored_channels || []);
+    const [ignoredRoles, setIgnoredRoles] = useState<string[]>(config?.ia_ignored_roles || []);
 
     useEffect(() => {
         if (state.success) {
@@ -105,21 +110,19 @@ export function CoreBotForm({ config, guildId }: { config: any, guildId: string 
 
                     {/* Canal da IA */}
                     <div className="space-y-4">
-                        <Label htmlFor="channel" className="text-base font-medium text-zinc-300 flex items-center gap-3">
+                        <Label className="text-base font-medium text-zinc-300 flex items-center gap-3">
                             <div className="p-2 rounded-lg bg-white/5">
                                 <MessageSquare className="w-4 h-4 text-purple-400" />
                             </div>
                             Canal de Interação
                         </Label>
-                        <div className="relative group/input">
-                            <Input
-                                id="channel"
-                                name="channelId"
-                                placeholder="ID do Canal (Ex: 123456...)"
-                                defaultValue={config?.ia_channel_id || ''}
-                                className="bg-black/50 border-white/10 text-white rounded-xl focus:border-purple-500/50 py-6 pl-4 transition-all group-hover/input:border-white/20"
-                            />
-                        </div>
+                        <ChannelSelect
+                            guildId={guildId}
+                            value={iaChannel}
+                            onChange={setIaChannel}
+                            placeholder="Selecione um canal..."
+                        />
+                        <input type="hidden" name="channelId" value={iaChannel} />
                         <p className="text-xs text-zinc-500 pl-1">
                             * Deixe vazio para permitir respostas em todos os canais permitidos.
                         </p>
@@ -191,32 +194,34 @@ export function CoreBotForm({ config, guildId }: { config: any, guildId: string 
                         </div>
 
                         <div className="space-y-4">
-                            <Label htmlFor="iaIgnoredChannels" className="text-base font-medium text-zinc-300">
+                            <Label className="text-base font-medium text-zinc-300">
                                 Canais Ignorados
                             </Label>
-                            <Input
-                                id="iaIgnoredChannels"
-                                name="iaIgnoredChannels"
-                                placeholder="IDs separados por vírgula"
-                                defaultValue={JSON.stringify(config?.ia_ignored_channels || []).replace(/[\[\]"]/g, '')}
-                                className="bg-black/50 border-white/10 text-white rounded-xl focus:border-purple-500/50 h-12 pl-4 transition-all"
+                            <ChannelSelect
+                                multi
+                                guildId={guildId}
+                                value={ignoredChannels}
+                                onChange={setIgnoredChannels}
+                                placeholder="Selecione canais..."
                             />
+                            <input type="hidden" name="iaIgnoredChannels" value={JSON.stringify(ignoredChannels)} />
                             <p className="text-xs text-zinc-500">
                                 O bot não responderá nestes canais.
                             </p>
                         </div>
 
                         <div className="space-y-4 md:col-span-2">
-                            <Label htmlFor="iaIgnoredRoles" className="text-base font-medium text-zinc-300">
+                            <Label className="text-base font-medium text-zinc-300">
                                 Cargos Ignorados
                             </Label>
-                            <Input
-                                id="iaIgnoredRoles"
-                                name="iaIgnoredRoles"
-                                placeholder="IDs separados por vírgula"
-                                defaultValue={JSON.stringify(config?.ia_ignored_roles || []).replace(/[\[\]"]/g, '')}
-                                className="bg-black/50 border-white/10 text-white rounded-xl focus:border-purple-500/50 h-12 pl-4 transition-all"
+                            <RoleSelect
+                                multi
+                                guildId={guildId}
+                                value={ignoredRoles}
+                                onChange={setIgnoredRoles}
+                                placeholder="Selecione cargos..."
                             />
+                            <input type="hidden" name="iaIgnoredRoles" value={JSON.stringify(ignoredRoles)} />
                             <p className="text-xs text-zinc-500">
                                 Usuários com estes cargos serão ignorados.
                             </p>
