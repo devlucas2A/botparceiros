@@ -541,7 +541,9 @@ const GUILD_CONFIG_COLUMNS = new Set([
     'ticket_panel_color', 'ticket_panel_button_text', 'ticket_panel_button_emoji', 'ticket_panel_footer',
     'ticket_logs_channel_id',
     'automod_ai_enabled',
-    'whitelabel_name', 'whitelabel_avatar_url'
+    'whitelabel_name', 'whitelabel_avatar_url',
+    // Settings page (preferences gerais)
+    'default_locale', 'timezone', 'bot_notify_channel'
 ]);
 
 const PRIVATE_CALL_COLUMNS = new Set(['is_open', 'member_limit', 'owner_id']);
