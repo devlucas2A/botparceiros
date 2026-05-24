@@ -1409,8 +1409,23 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-process.on('unhandledRejection', (error) => {
-    logger.error('Erro não tratado:', { error });
+// Defesa de processo: NAO deixar o bot morrer por erros transientes
+// (DiscordAPIError 10062 "Unknown interaction" e o caso mais comum).
+// Logamos detalhado para diagnostico, mas o processo segue vivo.
+process.on('unhandledRejection', (error: any) => {
+    logger.error('🛡️ unhandledRejection (processo NAO sera encerrado):', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack?.slice(0, 1000),
+    });
+});
+
+process.on('uncaughtException', (error: any) => {
+    logger.error('🛡️ uncaughtException (processo NAO sera encerrado):', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack?.slice(0, 1000),
+    });
 });
 
 export { LLMService, llmService };
