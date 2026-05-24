@@ -54,6 +54,7 @@ import { setupTicketEvents, TICKET_EVENTS } from '../tickets/events';
 import { commandEngine } from '../custom-commands/engine';
 import { customCommandService } from '../custom-commands/service';
 import { setupPrivateCallsEvents, PRIVATE_CALLS_EVENTS } from '../private-calls/events';
+import { heartbeatService } from '../../shared/services/heartbeat.service';
 
 
 let dbConnected = false;
@@ -1319,6 +1320,9 @@ async function registerCommands(clientId: string) {
 client.once('clientReady', async () => {
     logger.info(`🤖 COREIA CORE BOT (Multifuncional) - ONLINE`);
 
+    // Iniciar heartbeat para /api/health saber se o bot esta vivo
+    heartbeatService.start(client);
+
     // Iniciar verificação de inatividade
     verificarInatividade();
 
@@ -1403,6 +1407,7 @@ client.login(TOKEN).catch(error => {
 
 process.on('SIGINT', async () => {
     logger.info('Encerrando CoreIA...');
+    heartbeatService.stop();
     await closePool();
     client.destroy();
     process.exit(0);

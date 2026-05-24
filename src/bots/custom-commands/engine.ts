@@ -428,21 +428,77 @@ export class CommandEngine {
                     return false;
                 }
 
-                case 'SEND_CHANNEL':
-                    const channelId = action.channel_id;
-                    const channelMsg = interpolate(action.content);
-                    const channel = guild.channels.cache.get(channelId) as TextChannel;
-                    if (channel) {
-                        await channel.send(channelMsg);
+                case 'SEND_CHANNEL': {
+                    const rawId = interpolate(action.channel_id || '');
+                    const cleanId = rawId.replace(/[<#>]/g, '').trim();
+                    const channelMsg = interpolate(action.content || '');
+
+                    if (!cleanId || !/^\d{17,20}$/.test(cleanId)) {
+                        logger.warn('[CommandEngine] SEND_CHANNEL: channel_id invalido', { rawId, actionChannelId: action.channel_id });
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Canal inválido. Verifique se o comando recebeu uma opção do tipo CHANNEL.');
+                        return true;
                     }
-                    return false;
+
+                    if (!channelMsg.trim()) {
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Mensagem vazia. Nada foi enviado.');
+                        return true;
+                    }
+
+                    let channel: TextChannel | null = null;
+                    try {
+                        const cached = guild.channels.cache.get(cleanId);
+                        channel = (cached ?? await guild.channels.fetch(cleanId)) as TextChannel;
+                    } catch (e) {
+                        logger.warn(`[CommandEngine] SEND_CHANNEL: canal ${cleanId} nao encontrado`, { e });
+                    }
+
+                    if (!channel || typeof (channel as any).isTextBased !== 'function' || !(channel as any).isTextBased()) {
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Canal não encontrado ou não suporta texto.');
+                        return true;
+                    }
+
+                    const me = guild.members.me;
+                    if (me && !channel.permissionsFor(me)?.has(['ViewChannel', 'SendMessages'])) {
+                        await this.sendActionFeedback(interaction, firstResponseSent, `⚠️ Sem permissão para enviar em <#${cleanId}>.`);
+                        return true;
+                    }
+
+                    try {
+                        await channel.send(channelMsg);
+                        await this.sendActionFeedback(interaction, firstResponseSent, `✅ Mensagem enviada em <#${cleanId}>.`);
+                    } catch (err) {
+                        logger.error('[CommandEngine] SEND_CHANNEL: falha ao enviar', { err });
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Não foi possível enviar a mensagem no canal.');
+                    }
+                    return true;
+                }
 
                 default:
                     return false;
             }
         } catch (error) {
-            logger.error(`Error executing action ${action.type}`, { error });
+            logger.error(`Error executing action ${action.type}`, { error, action: { type: action.type } });
+            try {
+                await this.sendActionFeedback(
+                    interaction,
+                    firstResponseSent,
+                    `⚠️ Falha ao executar etapa **${action.type}** do comando.`
+                );
+            } catch { /* ignore */ }
             return false;
+        }
+    }
+
+    /** Envia feedback consistente: editReply se ainda nao respondeu, senao followUp ephemeral. */
+    private async sendActionFeedback(
+        interaction: ChatInputCommandInteraction,
+        firstResponseSent: boolean,
+        message: string
+    ): Promise<void> {
+        if (!firstResponseSent && interaction.deferred) {
+            await interaction.editReply({ content: message }).catch(() => { });
+        } else {
+            await interaction.followUp({ content: message, ephemeral: true }).catch(() => { });
         }
     }
 }

@@ -3,21 +3,49 @@
 import { customCommandService as service } from "../../../src/bots/custom-commands/service";
 import { revalidatePath } from "next/cache";
 import { llmService } from "../../../src/shared/services/llm.service";
+import { validateCommandSchema, formatValidationErrors } from "../../../src/bots/custom-commands/validator";
 
 export interface CommandState {
     success?: boolean;
     error?: string;
     message?: string;
     schema?: any;
+    /** Lista detalhada de erros de validacao (path + mensagem) para a UI destacar. */
+    validationErrors?: { path: string; message: string }[];
 }
 
 export async function generateCommandAction(prompt: string, context: string): Promise<CommandState> {
     try {
-        const schema = await llmService.generateCommandSchema(prompt, context);
+        // Ate 2 tentativas: se a IA gerar schema invalido, devolve os erros para ela corrigir.
+        let schema = await llmService.generateCommandSchema(prompt, context);
         if (!schema) {
             return { success: false, error: "Falha ao gerar comando. Tente novamente." };
         }
-        return { success: true, schema };
+
+        let result = validateCommandSchema(schema);
+
+        if (!result.valid) {
+            console.warn("[generateCommandAction] Schema invalido na 1a tentativa:", result.errors);
+            const retryPrompt =
+                `${prompt}\n\n[RETRY] O schema anterior tinha estes problemas:\n${formatValidationErrors(result.errors)}\n` +
+                `Corrija e retorne APENAS o JSON valido.`;
+            const retried = await llmService.generateCommandSchema(retryPrompt, context);
+            if (retried) {
+                schema = retried;
+                result = validateCommandSchema(retried);
+            }
+        }
+
+        if (!result.valid) {
+            return {
+                success: false,
+                error: "A IA gerou um comando inválido. Ajuste a descrição e tente novamente.",
+                validationErrors: result.errors,
+                schema, // devolve mesmo invalido para a UI exibir o que a IA produziu
+            };
+        }
+
+        return { success: true, schema: result.normalized };
     } catch (error) {
         console.error("Generate Command Error:", error);
         return { success: false, error: "Erro interno na IA." };
@@ -38,17 +66,35 @@ export async function createCustomCommandAction(prevState: CommandState, formDat
             return { success: false, error: "Dados inválidos." };
         }
 
-        const actions = JSON.parse(actionsJson);
-        const options = optionsJson ? JSON.parse(optionsJson) : [];
+        let actions: any[];
+        let options: any[];
+        try {
+            actions = JSON.parse(actionsJson);
+            options = optionsJson ? JSON.parse(optionsJson) : [];
+        } catch {
+            return { success: false, error: "JSON malformado em actions/options." };
+        }
+
+        // Validacao deterministica antes de salvar.
+        const result = validateCommandSchema({ name, description, options, actions });
+        if (!result.valid) {
+            return {
+                success: false,
+                error: "Comando inválido. Corrija os erros abaixo:",
+                validationErrors: result.errors,
+            };
+        }
+
+        const normalized = result.normalized!;
 
         await service.create(
             guildId,
-            name,
-            description,
+            normalized.name,
+            normalized.description,
             response || null,
-            actions,
+            normalized.actions,
             userId,
-            options
+            normalized.options || []
         );
 
         revalidatePath(`/dashboard/${guildId}/commands`);

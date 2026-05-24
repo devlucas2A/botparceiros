@@ -706,25 +706,31 @@ export class LLMService {
             'Voce e um Arquiteto de Comandos para Discord. Converta descricoes em linguagem natural em um esquema JSON completo e funcional.\n\n' +
             'CONTEXTO:\n' + (guildContext || 'Servidor generico') + '\n\n' +
             'ACOES SUPORTADAS:\n' +
-            '- REPLY: Responder fixo (params: content, ephemeral). Use {nome_opcao}.\n' +
-            '- AI_REPLY: Responde usando a Inteligência Artificial (params: prompt, system_prompt?, ephemeral?). Exemplo de prompt: "Responda a esta pergunta: {pergunta}".\n' +
+            '- REPLY: Responder fixo (params: content, ephemeral?). Use {nome_opcao} em content.\n' +
+            '- AI_REPLY: Responde usando IA (params: prompt, system_prompt?, ephemeral?). Ex.: prompt: "Responda: {pergunta}".\n' +
             '- ADD_ROLE: Adicionar cargo (params: role_id, user_id?).\n' +
             '- REMOVE_ROLE: Remover cargo (params: role_id, user_id?).\n' +
             '- SEND_DM: Enviar DM (params: content, user_id?).\n' +
-            '- SEND_CHANNEL: Enviar msg em canal (params: channel_id, content).\n' +
+            '- SEND_CHANNEL: Enviar mensagem em outro canal (params: channel_id, content).\n' +
             '- SET_NICKNAME: Mudar apelido (params: nickname, user_id?).\n' +
-            "- RANDOM_IMAGE: Enviar GIF (params: category). Categorias validas: 'bite','blush','cry','cuddle','dance','facepalm','feed','happy','highfive','hug','kiss','laugh','pat','poke','pout','slap','sleep','smile','smug','stare','think','thumbsup','tickle','wave','wink','yeet'.\n" +
+            "- RANDOM_IMAGE: Enviar GIF (params: category). Categorias: 'bite','blush','cry','cuddle','dance','facepalm','feed','happy','highfive','hug','kiss','laugh','pat','poke','pout','slap','sleep','smile','smug','stare','think','thumbsup','tickle','wave','wink','yeet'.\n" +
             '- KICK: Expulsar (params: user_id, reason).\n' +
             '- BAN: Banir (params: user_id, reason).\n\n' +
             'OPCOES (Slash Options): STRING, USER, CHANNEL, ROLE, INTEGER, BOOLEAN, NUMBER, ATTACHMENT.\n\n' +
-            'REGRAS CRITICAS:\n' +
-            '1. Se interage com outro usuario, EXIGE option type USER (required:true).\n' +
-            '2. "mudar apelido" -> option STRING para novo apelido.\n' +
-            '3. "dar cargo" -> option ROLE.\n' +
-            '4. "name" kebab-case, minusculo, sem acentos, max 32 chars.\n' +
-            '5. Use {nome_opcao} em actions. Para USER em texto, use <@{nome_opcao}>.\n' +
-            '6. SEMPRE passe user_id: "{alvo}" nas actions que mexem com outro usuario.\n\n' +
-            'EXEMPLO:\n' +
+            'MAPA DE INTERPOLACAO (option -> action):\n' +
+            '- option STRING        -> use {nome} em "content", "prompt", "nickname", "reason".\n' +
+            '- option USER          -> use "user_id": "{nome}". Em texto, use "<@{nome}>".\n' +
+            '- option CHANNEL       -> use "channel_id": "{nome}". Em texto, use "<#{nome}>".\n' +
+            '- option ROLE          -> use "role_id": "{nome}". Em texto, use "<@&{nome}>".\n\n' +
+            'REGRAS CRITICAS (NAO PODEM SER VIOLADAS):\n' +
+            '1. TODO placeholder {x} usado nas actions DEVE existir em options[] com o mesmo nome.\n' +
+            '2. SEND_CHANNEL exige uma option type CHANNEL e channel_id: "{nome_da_option}". NUNCA chute IDs.\n' +
+            '3. ADD_ROLE/REMOVE_ROLE exigem option type ROLE referenciada em role_id.\n' +
+            '4. KICK/BAN/SEND_DM/SET_NICKNAME em outro usuario exigem option type USER em user_id.\n' +
+            '5. "name" kebab-case, minusculo, sem acentos, ASCII apenas, max 32 chars, sem espacos.\n' +
+            '6. Nao invente IDs numericos. Use sempre {placeholder} -> option.\n' +
+            '7. Retorne JSON puro, sem markdown, sem comentarios.\n\n' +
+            'EXEMPLO 1 - Alterar status do membro:\n' +
             '{\n' +
             '  "name": "alterar-status",\n' +
             '  "description": "Altera apelido e cargo de um membro",\n' +
@@ -738,16 +744,28 @@ export class LLMService {
             '    { "type": "SET_NICKNAME", "nickname": "{novo_apelido}", "user_id": "{membro}" },\n' +
             '    { "type": "ADD_ROLE", "role_id": "{cargo}", "user_id": "{membro}" }\n' +
             '  ]\n' +
-            '}\n' +
-            'EXEMPLO DE IA (Comando "responder-pergunta"):\n' +
+            '}\n\n' +
+            'EXEMPLO 2 - Enviar mensagem em outro canal (CASO CRITICO):\n' +
             '{\n' +
-            '  "name": "perguntar",\n' +
-            '  "description": "Faz uma pergunta inteligente para a IA",\n' +
+            '  "name": "enviar-mensagem",\n' +
+            '  "description": "Envia uma mensagem em um canal especifico",\n' +
             '  "options": [\n' +
-            '    { "name": "pergunta", "description": "Sua dúvida", "type": "STRING", "required": true }\n' +
+            '    { "name": "canal", "description": "Canal de destino", "type": "CHANNEL", "required": true },\n' +
+            '    { "name": "mensagem", "description": "Conteudo da mensagem", "type": "STRING", "required": true }\n' +
             '  ],\n' +
             '  "actions": [\n' +
-            '    { "type": "AI_REPLY", "prompt": "{pergunta}", "system_prompt": "Você é um assistente inteligente. Responda à pergunta de forma clara, objetiva e útil." }\n' +
+            '    { "type": "SEND_CHANNEL", "channel_id": "{canal}", "content": "{mensagem}" }\n' +
+            '  ]\n' +
+            '}\n\n' +
+            'EXEMPLO 3 - Pergunta para IA:\n' +
+            '{\n' +
+            '  "name": "perguntar",\n' +
+            '  "description": "Faz uma pergunta para a IA",\n' +
+            '  "options": [\n' +
+            '    { "name": "pergunta", "description": "Sua duvida", "type": "STRING", "required": true }\n' +
+            '  ],\n' +
+            '  "actions": [\n' +
+            '    { "type": "AI_REPLY", "prompt": "{pergunta}", "system_prompt": "Voce e um assistente. Responda de forma clara." }\n' +
             '  ]\n' +
             '}';
         return this.generateJson(systemPrompt, prompt);
