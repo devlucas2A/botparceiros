@@ -32,43 +32,93 @@ async function fetchWithTimeout(url: string, timeout = 5000, headers: Record<str
 
 const registeredFonts = new Set<string>();
 
+// User-Agents que historicamente fazem o Google Fonts servir formatos
+// legados (TTF/WOFF1). Tentamos em sequencia se um nao funcionar.
+// node-canvas suporta TTF e OTF nativamente; WOFF1 funciona via fallback;
+// WOFF2 NAO funciona — por isso o esforco de evitar.
+const LEGACY_UAS = [
+    'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)',
+    'Mozilla/5.0 (Windows NT 6.1; rv:2.0.1) Gecko/20100101 Firefox/4.0.1',
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+];
+
 async function loadAndRegisterGoogleFont(fontFamily: string): Promise<string> {
     if (registeredFonts.has(fontFamily)) return fontFamily;
 
-    try {
-        const url = `https://fonts.googleapis.com/css?family=${fontFamily.replace(/ /g, '+')}`;
-        // Forçar um User-Agent bem antigo faz o Google Fonts API retornar um arquivo .ttf purão em vez de woff2!
-        const cssResp = await fetchWithTimeout(url, 4000, { 'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; rv:2.0.1) Gecko/20100101 Firefox/4.0.1' });
-        
-        if (!cssResp.ok) return PREFERRED_FONT;
-        
-        const css = await cssResp.text();
-        const match = css.match(/url\((https:\/\/[^)]+\.ttf)\)/);
-        
-        if (match && match[1]) {
+    const cssUrl = `https://fonts.googleapis.com/css?family=${fontFamily.replace(/ /g, '+')}`;
+
+    // Tenta varios UAs ate algum retornar um formato suportado
+    for (const ua of LEGACY_UAS) {
+        try {
+            const cssResp = await fetchWithTimeout(cssUrl, 4000, { 'User-Agent': ua });
+            if (!cssResp.ok) continue;
+
+            const css = await cssResp.text();
+
+            // Aceita TTF, OTF e WOFF (mas nao WOFF2)
+            const match = css.match(/url\((https:\/\/[^)]+\.(?:ttf|otf|woff))\)/i);
+            if (!match) {
+                logger.info(`[font] UA "${ua.slice(0, 30)}..." nao deu TTF/OTF/WOFF para ${fontFamily}, tentando proximo`);
+                continue;
+            }
+
             const fontUrl = match[1];
             const fontResp = await fetchWithTimeout(fontUrl, 5000);
+            if (!fontResp.ok) continue;
             const arrayBuffer = await fontResp.arrayBuffer();
-            
-            const fontPath = path.join(os.tmpdir(), `${fontFamily.replace(/ /g, '_')}_coreia.ttf`);
+
+            // Detecta extensao pela URL para escrever com extensao correta
+            const ext = (fontUrl.match(/\.(ttf|otf|woff)$/i)?.[1] || 'ttf').toLowerCase();
+            const fontPath = path.join(os.tmpdir(), `${fontFamily.replace(/ /g, '_')}_coreia.${ext}`);
             fs.writeFileSync(fontPath, Buffer.from(arrayBuffer));
 
             const { registerFont } = await import('canvas');
             registerFont(fontPath, { family: fontFamily });
             registeredFonts.add(fontFamily);
-            logger.info(`🎨 Fonte ${fontFamily} injetada dinamicamente pelo Google Fonts!`);
+            logger.info(`🎨 Fonte ${fontFamily} carregada (${ext.toUpperCase()})`);
             return fontFamily;
-        } else {
-            logger.warn(`Não foi possível extrair um link TTF para a fonte: ${fontFamily}`);
+        } catch (e: any) {
+            logger.warn(`[font] Tentativa com UA "${ua.slice(0, 30)}..." falhou: ${e.message}`);
         }
-    } catch (e: any) {
-        logger.error(`Falha no Google Fonts (${fontFamily}):`, e.message);
     }
-    
-    return PREFERRED_FONT; // Fallback
+
+    logger.warn(`[font] Nao foi possivel obter ${fontFamily} em formato suportado — usando fallback sans-serif`);
+    return PREFERRED_FONT;
 }
 
 
+
+/**
+ * Carrega imagem de URL externa (ex: Cloudinary) de forma robusta.
+ * loadImage() direto na URL costuma falhar sem User-Agent ou em hosts
+ * que respondem 403 sem header — entao baixamos via fetch e damos
+ * o buffer para o canvas.
+ */
+async function loadImageFromUrl(urlOrPath: string): Promise<ReturnType<typeof loadImage> | null> {
+    // Caminho local existente: usa direto
+    if (!/^https?:\/\//i.test(urlOrPath)) {
+        try {
+            if (fs.existsSync(urlOrPath)) return await loadImage(urlOrPath);
+        } catch (e) {
+            logger.warn(`[welcome] loadImage local falhou: ${urlOrPath}`, { e });
+        }
+        return null;
+    }
+
+    // URL: baixa com fetch para garantir User-Agent + timeout
+    try {
+        const resp = await fetchWithTimeout(urlOrPath, 5000);
+        if (!resp.ok) {
+            logger.warn(`[welcome] background HTTP ${resp.status}: ${urlOrPath}`);
+            return null;
+        }
+        const arrayBuffer = await resp.arrayBuffer();
+        return await loadImage(Buffer.from(arrayBuffer));
+    } catch (e) {
+        logger.warn(`[welcome] fetch do background falhou: ${urlOrPath}`, { e });
+        return null;
+    }
+}
 
 async function loadAvatarSafe(urlToLoad: string): Promise<ReturnType<typeof loadImage> | null> {
     try {
@@ -244,10 +294,10 @@ export async function generateBanner(
     // ─── Fundo ──────────────────────────────────────────────────────────
     let backgroundImage = null;
     if (backgroundPath) {
-        try {
-            backgroundImage = await loadImage(backgroundPath);
-        } catch {
-            logger.warn(`Background customizado falhou: ${backgroundPath}`);
+        logger.info(`[welcome] Tentando carregar background: ${backgroundPath}`);
+        backgroundImage = await loadImageFromUrl(backgroundPath);
+        if (!backgroundImage) {
+            logger.warn(`[welcome] Background nao carregado, usando fundo padrao: ${backgroundPath}`);
         }
     }
 
@@ -368,10 +418,10 @@ export async function generateBannerFast(
     const ctx = canvas.getContext('2d');
     const selectedFont = font ? await loadAndRegisterGoogleFont(font) : PREFERRED_FONT;
 
-    // Fundo
+    // Fundo (suporta URL HTTP ou caminho local)
     let backgroundImage = null;
-    if (backgroundPath && fs.existsSync(backgroundPath)) {
-        try { backgroundImage = await loadImage(backgroundPath); } catch { /* ignore */ }
+    if (backgroundPath) {
+        backgroundImage = await loadImageFromUrl(backgroundPath);
     }
     if (backgroundImage) {
         ctx.drawImage(backgroundImage, 0, 0, W, H);
