@@ -56,10 +56,10 @@ export function setupWelcomeEvents(client: Client) {
 
             // Tenta gerar o banner passando url e fonte do config
             try {
-                buffer = await generateBanner(member, messageText, config.welcome_banner_url, config.welcome_font);
+                buffer = await generateBanner(member, messageText, config.welcome_banner_url, config.welcome_font, 'welcome');
             } catch (error) {
                 logger.warn('Banner completo falhou, tentando versão rápida', { error });
-                buffer = await generateBannerFast(member, messageText, config.welcome_banner_url);
+                buffer = await generateBannerFast(member, messageText, config.welcome_banner_url, config.welcome_font, 'welcome');
             }
 
             const attachment = new AttachmentBuilder(buffer, { name: 'welcome.png' });
@@ -139,9 +139,9 @@ export function setupWelcomeEvents(client: Client) {
             let buffer: Buffer;
 
             try {
-                buffer = await generateBanner(guildMember, messageText, null);
+                buffer = await generateBanner(guildMember, messageText, null, config.welcome_font, 'leave');
             } catch (error) {
-                buffer = await generateBannerFast(guildMember, messageText, null);
+                buffer = await generateBannerFast(guildMember, messageText, null, config.welcome_font, 'leave');
             }
 
             const attachment = new AttachmentBuilder(buffer, { name: 'leave.png' });

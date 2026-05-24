@@ -116,18 +116,6 @@ async function loadAvatarSafe(urlToLoad: string): Promise<ReturnType<typeof load
     return null;
 }
 
-function drawHexagon(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number): void {
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-        const angle = (Math.PI / 3) * i - Math.PI / 2;
-        const x = cx + size * Math.cos(angle);
-        const y = cy + size * Math.sin(angle);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-}
-
 function drawCosmicBackground(ctx: CanvasRenderingContext2D, width: number, height: number): void {
     // Base gradient escuro
     const bgGradient = ctx.createLinearGradient(0, 0, width, height);
@@ -186,233 +174,272 @@ function drawCosmicBackground(ctx: CanvasRenderingContext2D, width: number, heig
 // 🖼️ GERADOR DE BANNER (Stateless)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function generateBanner(member: GuildMember, text: string, backgroundPath: string | null = null, font: string | null = null): Promise<Buffer> {
-    const username = member.user?.username || member.displayName || 'Usuário';
-    logger.info(`Gerando banner para ${username}`);
+export type BannerMode = 'welcome' | 'leave';
 
-    const canvas = createCanvas(800, 600);
+/** Substitui {user}, {server} e {memberCount} no template. */
+function interpolateMessage(text: string, member: GuildMember): string {
+    const username = member.user?.username || member.displayName || 'Usuário';
+    const serverName = member.guild?.name || 'Servidor';
+    const memberCount = member.guild?.memberCount || 0;
+    return (text || '')
+        .replace(/\[username\]/g, username)
+        .replace(/\{user\}/gi, username)
+        .replace(/\{server\}/gi, serverName)
+        .replace(/\{member[Cc]ount\}/g, String(memberCount));
+}
+
+/**
+ * Quebra o texto em multiplas linhas respeitando uma largura maxima.
+ * Reduz a fonte automaticamente se nao couber em ate `maxLines` linhas.
+ * Retorna { lines, fontSize }.
+ */
+function wrapText(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    fontFace: string,
+    startSize = 48,
+    minSize = 24,
+    maxLines = 2
+): { lines: string[]; fontSize: number } {
+    for (let size = startSize; size >= minSize; size -= 2) {
+        ctx.font = `bold ${size}px "${fontFace}", sans-serif`;
+        const words = text.split(/\s+/);
+        const lines: string[] = [];
+        let current = '';
+        for (const word of words) {
+            const candidate = current ? `${current} ${word}` : word;
+            if (ctx.measureText(candidate).width <= maxWidth) {
+                current = candidate;
+            } else {
+                if (current) lines.push(current);
+                current = word;
+            }
+        }
+        if (current) lines.push(current);
+        if (lines.length <= maxLines) return { lines, fontSize: size };
+    }
+    // Fallback: trunca com elipse
+    ctx.font = `bold ${minSize}px "${fontFace}", sans-serif`;
+    const truncated = text.length > 80 ? text.slice(0, 77) + '…' : text;
+    return { lines: [truncated], fontSize: minSize };
+}
+
+export async function generateBanner(
+    member: GuildMember,
+    text: string,
+    backgroundPath: string | null = null,
+    font: string | null = null,
+    mode: BannerMode = 'welcome'
+): Promise<Buffer> {
+    const username = member.user?.username || member.displayName || 'Usuário';
+    logger.info(`Gerando banner (${mode}) para ${username}`);
+
+    const W = 800;
+    const H = 360;
+    const canvas = createCanvas(W, H);
     const ctx = canvas.getContext('2d');
     const selectedFont = font ? await loadAndRegisterGoogleFont(font) : PREFERRED_FONT;
 
-    // Fundo
+    // ─── Fundo ──────────────────────────────────────────────────────────
     let backgroundImage = null;
-
     if (backgroundPath) {
         try {
-            // loadImage aceita tanto URLs (http/https) quanto caminhos locais
             backgroundImage = await loadImage(backgroundPath);
-        } catch (error) {
-            logger.warn(`Erro ao carregar background customizado: ${backgroundPath}`);
+        } catch {
+            logger.warn(`Background customizado falhou: ${backgroundPath}`);
         }
     }
 
     if (backgroundImage) {
-        ctx.drawImage(backgroundImage, 0, 0, 800, 600);
+        ctx.drawImage(backgroundImage, 0, 0, W, H);
+        // Overlay escuro para legibilidade do texto
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.fillRect(0, 0, W, H);
     } else {
-        drawCosmicBackground(ctx, 800, 600);
+        drawCosmicBackground(ctx, W, H);
     }
 
-    // Avatar
-    const avatarCenterX = 400;
-    const avatarCenterY = 170;
-    const avatarRadius = 90;
+    // ─── Avatar (lateral esquerda, circular) ────────────────────────────
+    const avatarSize = 140;
+    const avatarX = 60;
+    const avatarY = (H - avatarSize) / 2;
+    const avatarCenterX = avatarX + avatarSize / 2;
+    const avatarCenterY = avatarY + avatarSize / 2;
+    const avatarRadius = avatarSize / 2;
 
-    let avatarURL = member.user?.displayAvatarURL({ extension: 'png', size: 128 }) || '';
-    if (avatarURL.includes('.webp')) {
-        avatarURL = avatarURL.replace('.webp', '.png');
-    }
+    let avatarURL = member.user?.displayAvatarURL({ extension: 'png', size: 256 }) || '';
+    if (avatarURL.includes('.webp')) avatarURL = avatarURL.replace('.webp', '.png');
+    const avatar = await loadAvatarSafe(avatarURL);
 
-    let avatar = await loadAvatarSafe(avatarURL);
+    // Anel sutil ao redor do avatar (cor depende do mode)
+    const ringColor = mode === 'welcome' ? 'rgba(96, 165, 250, 0.85)' : 'rgba(248, 113, 113, 0.85)';
+    ctx.save();
+    ctx.shadowColor = ringColor;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(avatarCenterX, avatarCenterY, avatarRadius + 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
 
+    // Avatar (clip circular)
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
+    ctx.clip();
     if (avatar) {
-        // Glow layers
-        const glowLayers = [
-            { size: avatarRadius + 25, color: 'rgba(0, 255, 255, 0.15)', blur: 30 },
-            { size: avatarRadius + 18, color: 'rgba(255, 0, 255, 0.2)', blur: 20 },
-            { size: avatarRadius + 12, color: 'rgba(0, 255, 255, 0.3)', blur: 15 },
-        ];
-
-        glowLayers.forEach(layer => {
-            ctx.save();
-            ctx.shadowColor = layer.color;
-            ctx.shadowBlur = layer.blur;
-            ctx.strokeStyle = layer.color;
-            ctx.lineWidth = 3;
-            drawHexagon(ctx, avatarCenterX, avatarCenterY, layer.size);
-            ctx.stroke();
-            ctx.restore();
-        });
-
-        // Borda hexagonal principal
-        ctx.save();
-        ctx.shadowColor = '#00ffff';
-        ctx.shadowBlur = 20;
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 4;
-        drawHexagon(ctx, avatarCenterX, avatarCenterY, avatarRadius + 5);
-        ctx.stroke();
-        ctx.restore();
-
-        // Clip e desenha avatar
-        ctx.save();
-        drawHexagon(ctx, avatarCenterX, avatarCenterY, avatarRadius);
-        ctx.clip();
-        ctx.drawImage(avatar, avatarCenterX - avatarRadius, avatarCenterY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
-        ctx.restore();
+        ctx.drawImage(avatar, avatarX, avatarY, avatarSize, avatarSize);
     } else {
-        // Placeholder
-        ctx.save();
-        const placeholderGradient = ctx.createRadialGradient(avatarCenterX, avatarCenterY, 0, avatarCenterX, avatarCenterY, avatarRadius);
-        placeholderGradient.addColorStop(0, '#ffdd44');
-        placeholderGradient.addColorStop(0.7, '#ffaa00');
-        placeholderGradient.addColorStop(1, '#cc6600');
-
-        ctx.fillStyle = placeholderGradient;
-        ctx.beginPath();
-        ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.strokeStyle = '#ffdd44';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
         ctx.fillStyle = '#ffffff';
-        ctx.font = `bold 48px "${selectedFont}", sans-serif`;
+        ctx.font = `bold 64px "${selectedFont}", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(username.charAt(0).toUpperCase(), avatarCenterX, avatarCenterY);
-        ctx.restore();
     }
-
-    // Texto principal
-    const displayText = text.replace('[username]', username).replace('{user}', username);
-    const mainY = 330;
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Subtítulo
-    ctx.save();
-    ctx.font = `bold 18px "${selectedFont}", sans-serif`;
-    ctx.shadowColor = '#00ffff';
-    ctx.shadowBlur = 15;
-    ctx.fillStyle = '#00ffff';
-    ctx.fillText('★ BEM-VINDO À GALÁXIA ★', 400, mainY - 60);
     ctx.restore();
 
-    // Nome com neon
+    // ─── Texto (lateral direita) ────────────────────────────────────────
+    const textAreaX = avatarX + avatarSize + 40; // 240
+    const textAreaWidth = W - textAreaX - 40;    // ~520
+    const labelColor = mode === 'welcome' ? '#60a5fa' : '#f87171';
+    const labelText = mode === 'welcome' ? '✦ NOVO MEMBRO' : '✦ ATÉ LOGO';
+
+    // Label superior
     ctx.save();
-    ctx.font = `bold 52px "${selectedFont}", sans-serif`;
-
-    const textGrad = ctx.createLinearGradient(100, mainY - 30, 700, mainY + 30);
-    textGrad.addColorStop(0, '#00ffff');
-    textGrad.addColorStop(0.3, '#ffffff');
-    textGrad.addColorStop(0.5, '#ff00ff');
-    textGrad.addColorStop(0.7, '#ffffff');
-    textGrad.addColorStop(1, '#00ffff');
-
-    ctx.shadowColor = '#00ffff';
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = textGrad;
-    ctx.fillText(displayText.toUpperCase(), 400, mainY);
+    ctx.font = `bold 14px "${selectedFont}", sans-serif`;
+    ctx.fillStyle = labelColor;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(labelText, textAreaX, 70);
     ctx.restore();
 
-    // Contador de membros
-    const memberCount = member.guild?.memberCount || 0;
-    ctx.save();
+    // Mensagem principal — sem CAPS, com word-wrap, fonte auto-fit
+    const message = interpolateMessage(text, member);
+    const wrapped = wrapText(ctx, message, textAreaWidth, selectedFont, 40, 22, 3);
 
-    const counterY = mainY + 70;
-    ctx.shadowColor = '#00ffff';
-    ctx.shadowBlur = 8;
-    ctx.font = `bold 20px "${selectedFont}", sans-serif`;
+    ctx.save();
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`⭐ MEMBRO #${memberCount} ⭐`, 400, counterY);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = 6;
+    ctx.font = `bold ${wrapped.fontSize}px "${selectedFont}", sans-serif`;
+    const lineHeight = wrapped.fontSize * 1.15;
+    const textBlockY = 100;
+    wrapped.lines.forEach((line, i) => {
+        ctx.fillText(line, textAreaX, textBlockY + i * lineHeight);
+    });
     ctx.restore();
 
-    // Rodapé
+    // Linha inferior: server + contador (sutil)
+    const memberCount = member.guild?.memberCount || 0;
+    const serverName = member.guild?.name || '';
+    const footerText = mode === 'welcome'
+        ? `${serverName} • membro #${memberCount}`
+        : `${serverName} • ${memberCount} ${memberCount === 1 ? 'membro' : 'membros'}`;
+
     ctx.save();
-    ctx.font = `16px "${selectedFont}", sans-serif`;
-    ctx.fillStyle = 'rgba(200, 200, 255, 0.7)';
-    ctx.fillText('━━━━━━━━━━ ✦ COREBOT ✦ ━━━━━━━━━━', 400, 550);
+    ctx.font = `14px "${selectedFont}", sans-serif`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(footerText, textAreaX, H - 50);
     ctx.restore();
 
     return canvas.toBuffer();
 }
 
-export async function generateBannerFast(member: GuildMember, text: string, backgroundPath: string | null = null, font: string | null = null): Promise<Buffer> {
+export async function generateBannerFast(
+    member: GuildMember,
+    text: string,
+    backgroundPath: string | null = null,
+    font: string | null = null,
+    mode: BannerMode = 'welcome'
+): Promise<Buffer> {
     const username = member?.user?.username || member?.displayName || 'Usuário';
 
-    const canvas = createCanvas(800, 600);
+    const W = 800;
+    const H = 360;
+    const canvas = createCanvas(W, H);
     const ctx = canvas.getContext('2d');
     const selectedFont = font ? await loadAndRegisterGoogleFont(font) : PREFERRED_FONT;
 
-    // Fundo simples
+    // Fundo
     let backgroundImage = null;
-
     if (backgroundPath && fs.existsSync(backgroundPath)) {
-        try {
-            backgroundImage = await loadImage(backgroundPath);
-        } catch (error) {
-            logger.warn('Erro ao carregar background');
-        }
+        try { backgroundImage = await loadImage(backgroundPath); } catch { /* ignore */ }
     }
-
     if (backgroundImage) {
-        ctx.drawImage(backgroundImage, 0, 0, 800, 600);
+        ctx.drawImage(backgroundImage, 0, 0, W, H);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.fillRect(0, 0, W, H);
     } else {
-        ctx.fillStyle = '#1a0033';
-        ctx.fillRect(0, 0, 800, 600);
-        ctx.fillStyle = '#00ffff';
-        for (let i = 0; i < 50; i++) {
-            ctx.beginPath();
-            ctx.arc(Math.random() * 800, Math.random() * 600, Math.random() * 2, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        // Fundo escuro sobrio
+        const bg = ctx.createLinearGradient(0, 0, W, H);
+        bg.addColorStop(0, '#0f172a');
+        bg.addColorStop(1, '#1e293b');
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, W, H);
     }
 
-    // Avatar placeholder
-    const avatarCenterX = 400;
-    const avatarCenterY = 180;
-    const avatarRadius = 100;
+    // Avatar placeholder (somente inicial, sem gradient laranja absurdo)
+    const avatarSize = 140;
+    const avatarX = 60;
+    const avatarY = (H - avatarSize) / 2;
+    const avatarCenterX = avatarX + avatarSize / 2;
+    const avatarCenterY = avatarY + avatarSize / 2;
+    const avatarRadius = avatarSize / 2;
+
+    const ringColor = mode === 'welcome' ? '#60a5fa' : '#f87171';
+    ctx.save();
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(avatarCenterX, avatarCenterY, avatarRadius + 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
 
     ctx.save();
-    const placeholderGradient = ctx.createRadialGradient(avatarCenterX, avatarCenterY, 0, avatarCenterX, avatarCenterY, avatarRadius);
-    placeholderGradient.addColorStop(0, '#ffdd44');
-    placeholderGradient.addColorStop(0.7, '#ffaa00');
-    placeholderGradient.addColorStop(1, '#cc6600');
-
-    ctx.fillStyle = placeholderGradient;
     ctx.beginPath();
     ctx.arc(avatarCenterX, avatarCenterY, avatarRadius, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = '#ffdd44';
-    ctx.lineWidth = 6;
-    ctx.stroke();
-
+    ctx.clip();
+    ctx.fillStyle = '#1f2937';
+    ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold 72px "${selectedFont}", sans-serif`;
+    ctx.font = `bold 64px "${selectedFont}", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(username.charAt(0).toUpperCase(), avatarCenterX, avatarCenterY);
     ctx.restore();
 
     // Texto
-    const displayText = text.replace('[username]', username).replace('{user}', username);
-    const mainYFast = 360;
+    const textAreaX = avatarX + avatarSize + 40;
+    const textAreaWidth = W - textAreaX - 40;
+    const message = interpolateMessage(text, member);
+    const wrapped = wrapText(ctx, message, textAreaWidth, selectedFont, 36, 22, 3);
 
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `bold 56px "${selectedFont}", sans-serif`;
+    ctx.save();
+    ctx.fillStyle = mode === 'welcome' ? '#60a5fa' : '#f87171';
+    ctx.font = `bold 14px "${selectedFont}", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(mode === 'welcome' ? '✦ NOVO MEMBRO' : '✦ ATÉ LOGO', textAreaX, 70);
+    ctx.restore();
 
-    const gradFast = ctx.createLinearGradient(200, mainYFast - 40, 600, mainYFast + 40);
-    gradFast.addColorStop(0, '#ffd54f');
-    gradFast.addColorStop(0.4, '#ff8a00');
-    gradFast.addColorStop(0.7, '#ff3d00');
-    gradFast.addColorStop(1, '#ffeaa7');
-
-    ctx.fillStyle = gradFast;
-    ctx.fillText(displayText.toUpperCase(), 400, mainYFast);
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${wrapped.fontSize}px "${selectedFont}", sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const lineHeight = wrapped.fontSize * 1.15;
+    wrapped.lines.forEach((line, i) => {
+        ctx.fillText(line, textAreaX, 100 + i * lineHeight);
+    });
+    ctx.restore();
 
     return canvas.toBuffer();
 }
