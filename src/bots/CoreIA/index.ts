@@ -594,7 +594,9 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates
     ],
-    partials: [Partials.Channel, Partials.Message]
+    // Partials.GuildMember é essencial para receber guildMemberRemove
+    // de membros que não estão no cache no momento da saída.
+    partials: [Partials.Channel, Partials.Message, Partials.GuildMember]
 });
 
 const conversasAtivas = new Map<string, number>();

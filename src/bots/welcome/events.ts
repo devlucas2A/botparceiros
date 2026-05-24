@@ -4,28 +4,50 @@ import { generateBanner, generateBannerFast } from './welcome.service';
 import { trackEvent } from '../../shared/services/analytics.service';
 
 export function setupWelcomeEvents(client: Client) {
-    logger.info('🌌 Módulo Welcome: Eventos inicializados');
+    logger.info('🌌 Módulo Welcome: Eventos inicializados (guildMemberAdd + guildMemberRemove)');
+    logger.info('   ℹ️ Estes eventos exigem o "SERVER MEMBERS INTENT" habilitado no Discord Developer Portal.');
 
     // Welcome
     client.on('guildMemberAdd', async (member: GuildMember) => {
-        if (member.user.bot) return;
+        logger.info(`[Welcome] guildMemberAdd disparou: ${member.user.tag} em ${member.guild.id}`);
+        if (member.user.bot) {
+            logger.info(`[Welcome] Ignorado: ${member.user.tag} e bot`);
+            return;
+        }
 
         const guildId = member.guild.id;
         trackEvent(guildId, 'member_join').catch(() => {});
 
         try {
             const config = await getGuildConfig(guildId);
-            if (!config || !config.welcome_channel_id) return;
+            if (!config) {
+                logger.warn(`[Welcome] Sem config para guild ${guildId} — pule ou crie no painel`);
+                return;
+            }
+            if (!config.welcome_channel_id) {
+                logger.info(`[Welcome] welcome_channel_id nao configurado para guild ${guildId}`);
+                return;
+            }
 
-            const channel = member.guild.channels.cache.get(config.welcome_channel_id) as TextChannel;
+            // Cache + fetch fallback: cache.get pode falhar em horario de pico
+            let channel: TextChannel | null = null;
+            try {
+                const cached = member.guild.channels.cache.get(config.welcome_channel_id);
+                channel = (cached ?? await member.guild.channels.fetch(config.welcome_channel_id)) as TextChannel;
+            } catch (err) {
+                logger.warn(`[Welcome] Canal ${config.welcome_channel_id} nao encontrado na guild ${guildId}`, { err });
+                return;
+            }
             if (!channel) {
-                logger.warn(`Canal de welcome ${config.welcome_channel_id} não encontrado na guild ${guildId}`);
+                logger.warn(`[Welcome] Canal ${config.welcome_channel_id} retornou null na guild ${guildId}`);
                 return;
             }
 
             const botPermissions = channel.permissionsFor(member.guild.members.me!);
-            if (!botPermissions?.has(PermissionFlagsBits.SendMessages) || !botPermissions?.has(PermissionFlagsBits.AttachFiles)) {
-                logger.warn(`Sem permissão para enviar welcome em ${channel.name} (${guildId})`);
+            const hasSend = botPermissions?.has(PermissionFlagsBits.SendMessages);
+            const hasAttach = botPermissions?.has(PermissionFlagsBits.AttachFiles);
+            if (!hasSend || !hasAttach) {
+                logger.warn(`[Welcome] Sem permissao em #${channel.name} (guild ${guildId}): send=${hasSend} attach=${hasAttach}`);
                 return;
             }
 
@@ -71,20 +93,45 @@ export function setupWelcomeEvents(client: Client) {
     // Leave
     client.on('guildMemberRemove', async (member) => {
         const guildMember = member as GuildMember;
-        if (guildMember.user.bot) return;
+        const tag = guildMember.user?.tag || guildMember.id;
+        logger.info(`[Leave] guildMemberRemove disparou: ${tag} em ${guildMember.guild?.id}`);
+        if (guildMember.user?.bot) {
+            logger.info(`[Leave] Ignorado: ${tag} e bot`);
+            return;
+        }
 
         const guildId = guildMember.guild.id;
         trackEvent(guildId, 'member_leave').catch(() => {});
 
         try {
             const config = await getGuildConfig(guildId);
-            if (!config || !config.leave_channel_id) return;
+            if (!config) {
+                logger.warn(`[Leave] Sem config para guild ${guildId}`);
+                return;
+            }
+            if (!config.leave_channel_id) {
+                logger.info(`[Leave] leave_channel_id nao configurado para guild ${guildId}`);
+                return;
+            }
 
-            const channel = guildMember.guild.channels.cache.get(config.leave_channel_id) as TextChannel;
-            if (!channel) return;
+            let channel: TextChannel | null = null;
+            try {
+                const cached = guildMember.guild.channels.cache.get(config.leave_channel_id);
+                channel = (cached ?? await guildMember.guild.channels.fetch(config.leave_channel_id)) as TextChannel;
+            } catch (err) {
+                logger.warn(`[Leave] Canal ${config.leave_channel_id} nao encontrado na guild ${guildId}`, { err });
+                return;
+            }
+            if (!channel) {
+                logger.warn(`[Leave] Canal ${config.leave_channel_id} retornou null na guild ${guildId}`);
+                return;
+            }
 
             const botPermissions = channel.permissionsFor(guildMember.guild.members.me!);
-            if (!botPermissions?.has(PermissionFlagsBits.SendMessages) || !botPermissions?.has(PermissionFlagsBits.AttachFiles)) {
+            const hasSend = botPermissions?.has(PermissionFlagsBits.SendMessages);
+            const hasAttach = botPermissions?.has(PermissionFlagsBits.AttachFiles);
+            if (!hasSend || !hasAttach) {
+                logger.warn(`[Leave] Sem permissao em #${channel.name} (guild ${guildId}): send=${hasSend} attach=${hasAttach}`);
                 return;
             }
 

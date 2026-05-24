@@ -71,6 +71,11 @@ export interface GuildConfig extends QueryResultRow {
     whitelabel_name?: string | null;
     whitelabel_avatar_url?: string | null;
 
+    // Configurações gerais (settings page)
+    default_locale?: string | null;
+    timezone?: string | null;
+    bot_notify_channel?: string | null;
+
     updated_at: Date;
 }
 
@@ -459,7 +464,12 @@ export async function initializeSchema(): Promise<void> {
                 ADD COLUMN IF NOT EXISTS automod_ai_enabled BOOLEAN DEFAULT false,
                 ADD COLUMN IF NOT EXISTS whitelabel_name VARCHAR(32),
                 ADD COLUMN IF NOT EXISTS ia_triggers TEXT[] DEFAULT '{}',
-                ADD COLUMN IF NOT EXISTS whitelabel_avatar_url VARCHAR(255);
+                ADD COLUMN IF NOT EXISTS whitelabel_avatar_url VARCHAR(255),
+
+                -- Settings page (preferences gerais)
+                ADD COLUMN IF NOT EXISTS default_locale VARCHAR(5) DEFAULT 'pt',
+                ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'America/Sao_Paulo',
+                ADD COLUMN IF NOT EXISTS bot_notify_channel VARCHAR(20);
             `);
 
             // Ticket Migration
