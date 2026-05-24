@@ -1,9 +1,10 @@
-import { 
-    Guild, 
-    ChannelType, 
-    Role, 
-    PermissionFlagsBits, 
-    ColorResolvable
+import {
+    Guild,
+    ChannelType,
+    Role,
+    PermissionFlagsBits,
+    ColorResolvable,
+    TextChannel,
 } from 'discord.js';
 import { llmService } from './llm.service';
 import { logger } from './index';
@@ -18,9 +19,12 @@ interface ServerChannel {
     description?: string;
     user_limit?: number;      // Para canais de voz (0-99), 0 = sem limite
     is_private?: boolean;
+    is_readonly?: boolean;    // Canal de leitura, somente staff posta
     slowmode?: number;        // Segundos (0-21600)
     nsfw?: boolean;
-    allowed_roles?: string[];
+    allowed_roles?: string[]; // Para private: nomes dos cargos com acesso
+    writable_roles?: string[];// Para readonly: nomes dos cargos que podem postar
+    initial_message?: string; // Mensagem postada automaticamente apos criar o canal
 }
 
 interface ServerCategory {
@@ -39,6 +43,36 @@ interface ServerRole {
 interface ServerSchema {
     roles: ServerRole[];
     categories: ServerCategory[];
+}
+
+/** Resultado da construcao — IDs criados, para suporte a undo. */
+export interface BuildResult {
+    role_ids: string[];
+    category_ids: string[];
+    channel_ids: string[];
+    errors: string[];
+}
+
+/** Estado atual do servidor — passado a IA para evitar duplicatas. */
+export interface ExistingServerState {
+    roles: string[];          // Nomes
+    categories: string[];     // Nomes
+    channels: string[];       // Nomes (sem agrupamento por categoria, mais simples)
+}
+
+/** Opcoes do gerador. */
+export interface BuilderOptions {
+    estilo?: 'gaming' | 'comunidade' | 'rpg' | 'educacional' | 'empresa' | 'outro';
+    tamanho?: 'enxuto' | 'medio' | 'completo';
+    idioma?: 'pt' | 'en' | 'es';
+}
+
+/** Evento de progresso estruturado durante a construcao. */
+export interface BuildProgress {
+    phase: 'roles' | 'categories' | 'channels' | 'messages' | 'done';
+    current: number;
+    total: number;
+    label: string;
 }
 
 interface AdjustmentAction {
@@ -314,22 +348,78 @@ export class ServerBuilderService {
     }
 
     /**
-     * Passo 1: Gerar o plano JSON com a LLM
+     * Passo 1: Gerar o plano JSON com a LLM.
+     * Aceita opcoes estruturadas e contexto do servidor existente para
+     * que a IA evite duplicatas e personalize tamanho/estilo/idioma.
      */
-    async generateServerPlan(theme: string): Promise<ServerSchema | null> {
-        logger.info(`🏗️ Gerando plano de servidor PREMIUM para tema: ${theme}`);
-        
+    async generateServerPlan(
+        theme: string,
+        options: BuilderOptions = {},
+        existingState?: ExistingServerState
+    ): Promise<ServerSchema | null> {
+        logger.info(`🏗️ Gerando plano de servidor PREMIUM para tema: ${theme}`, { options });
+
+        const sizeHint: Record<NonNullable<BuilderOptions['tamanho']>, string> = {
+            enxuto: 'TAMANHO: ENXUTO — 2-3 categorias, 8-12 canais no total, 3-4 cargos.',
+            medio: 'TAMANHO: MEDIO — 3-4 categorias, 15-22 canais, 5-6 cargos.',
+            completo: 'TAMANHO: COMPLETO — 5-7 categorias, 25-35 canais, 6-8 cargos.',
+        };
+
+        const styleHint: Record<NonNullable<BuilderOptions['estilo']>, string> = {
+            gaming: 'ESTILO: GAMING — categorias por jogo, canais de matchmaking, lounges de voz por jogo.',
+            comunidade: 'ESTILO: COMUNIDADE — chats por tema, canais de interacao social, eventos.',
+            rpg: 'ESTILO: RPG — areas IC/OOC, fichas, dados, sessoes, masterizacao.',
+            educacional: 'ESTILO: EDUCACIONAL — materias, salas de estudo, suporte, biblioteca.',
+            empresa: 'ESTILO: EMPRESA — departamentos, reunioes, anuncios oficiais, RH.',
+            outro: 'ESTILO: GENERICO — adapte ao tema fornecido.',
+        };
+
+        const languageHint: Record<NonNullable<BuilderOptions['idioma']>, string> = {
+            pt: 'IDIOMA: Portugues do Brasil. Nomes e descricoes em pt-BR.',
+            en: 'IDIOMA: Ingles. Nomes e descricoes em English.',
+            es: 'IDIOMA: Espanhol. Nomes e descricoes em Espanol.',
+        };
+
+        const hints: string[] = [];
+        if (options.tamanho) hints.push(sizeHint[options.tamanho]);
+        if (options.estilo) hints.push(styleHint[options.estilo]);
+        if (options.idioma) hints.push(languageHint[options.idioma]);
+
+        // Contexto do servidor atual — instrui a IA a NAO duplicar
+        let existingContext = '';
+        if (existingState && (existingState.roles.length || existingState.channels.length)) {
+            const trim = (arr: string[], max = 30) =>
+                arr.slice(0, max).join(', ') + (arr.length > max ? `... (+${arr.length - max})` : '');
+            existingContext = `
+═══════════════════════════════════════════════════════════════════════════════
+🔍 ESTADO ATUAL DO SERVIDOR (NAO DUPLICAR):
+Cargos existentes: ${trim(existingState.roles)}
+Categorias existentes: ${trim(existingState.categories)}
+Canais existentes: ${trim(existingState.channels, 50)}
+
+REGRA CRITICA: NAO recrie itens que ja existem. Complete o que falta,
+sugerindo nomes novos e categorias que se encaixam no tema sem conflitar.
+`;
+        }
+
         const enhancedPrompt = `
 ${SERVER_BUILDER_PROMPT}
 
 ═══════════════════════════════════════════════════════════════════════════════
 🎯 TEMA DO SERVIDOR: ${theme}
+${hints.length ? '\n' + hints.join('\n') + '\n' : ''}${existingContext}
 ═══════════════════════════════════════════════════════════════════════════════
 
-Crie uma estrutura COMPLETA e PREMIUM para este tema.
-Use emojis RELEVANTES ao tema.
-Crie nomes CRIATIVOS e DECORADOS.
-Inclua canais de voz com limites apropriados.
+Crie uma estrutura COMPLETA e PREMIUM seguindo as instrucoes acima.
+Use emojis RELEVANTES ao tema. Crie nomes CRIATIVOS e DECORADOS.
+
+CAMPOS OPCIONAIS QUE VOCE PODE USAR:
+- "is_readonly": true em canais como regras, anuncios, faq (somente staff posta)
+- "is_private": true em canais staff/vip
+- "writable_roles": ["NomeDoCargo"] (para readonly — quem pode postar)
+- "allowed_roles": ["NomeDoCargo"] (para private — quem ve)
+- "initial_message": "Texto de boas-vindas..." em canais especiais (regras, portal, faq).
+  Use apenas em canais cujo proposito beneficia de uma mensagem inicial postada pelo bot.
 `;
 
         const rawSchema = await llmService.generateJson<ServerSchema>(
@@ -337,7 +427,6 @@ Inclua canais de voz com limites apropriados.
             `Crie o servidor com tema: "${theme}". Seja criativo e profissional!`
         );
 
-        // Aplica pós-processamento para garantir formatação correta
         if (rawSchema) {
             logger.info('🔧 Aplicando pós-processamento de formatação...');
             return this.postProcessSchema(rawSchema);
@@ -346,27 +435,66 @@ Inclua canais de voz com limites apropriados.
         return null;
     }
 
+    /** Coleta o estado atual do servidor para passar a IA na Fase 2 (awareness). */
+    collectExistingState(guild: Guild): ExistingServerState {
+        return {
+            roles: guild.roles.cache
+                .filter(r => r.name !== '@everyone' && !r.managed)
+                .map(r => r.name),
+            categories: guild.channels.cache
+                .filter(c => c.type === ChannelType.GuildCategory)
+                .map(c => c.name),
+            channels: guild.channels.cache
+                .filter(c => c.type !== ChannelType.GuildCategory)
+                .map(c => c.name),
+        };
+    }
+
 
     /**
-     * Passo 2: Construir o servidor com todas as features
+     * Passo 2: Construir o servidor com todas as features.
+     *
+     * Paridade com a rota web /api/server-builder/apply:
+     * - is_readonly + writable_roles (somente staff posta)
+     * - is_private + allowed_roles (visivel apenas para alguns cargos)
+     * - Fallback Community: se servidor nao e Community, converte
+     *   Stage/Forum/Announcement em Voice/Text automaticamente
+     * - Mensagens iniciais postadas em canais especiais (regras/portal/faq)
+     * - Retorna BuildResult com os IDs criados (suporte a undo)
      */
-    async buildServer(guild: Guild, schema: ServerSchema, progressCallback?: (msg: string) => void): Promise<void> {
-        const notify = (msg: string) => {
-            logger.info(`[ServerBuilder] ${guild.id}: ${msg}`);
-            if (progressCallback) progressCallback(msg);
+    async buildServer(
+        guild: Guild,
+        schema: ServerSchema,
+        progressCallback?: (progress: BuildProgress) => void
+    ): Promise<BuildResult> {
+        const result: BuildResult = {
+            role_ids: [],
+            category_ids: [],
+            channel_ids: [],
+            errors: [],
+        };
+
+        const notify = (p: BuildProgress) => {
+            logger.info(`[ServerBuilder] ${guild.id} ${p.phase} ${p.current}/${p.total}: ${p.label}`);
+            if (progressCallback) {
+                try { progressCallback(p); } catch { /* nao deixa um callback ruim quebrar o build */ }
+            }
         };
 
         const roleCount = schema.roles?.length || 0;
         const categoryCount = schema.categories?.length || 0;
-        const channelCount = schema.categories?.reduce((acc, cat) => acc + (cat.channels?.length || 0), 0) || 0;
+        const channelDefs = schema.categories?.flatMap(c => c.channels || []) || [];
+        const channelCount = channelDefs.length;
+        const messageDefs = channelDefs.filter(c => c.initial_message?.trim());
+        const messageCount = messageDefs.length;
 
-        notify(`🚀 Iniciando construção PREMIUM: ${roleCount} cargos, ${categoryCount} categorias, ${channelCount} canais.`);
+        const isCommunity = guild.features?.includes('COMMUNITY');
 
-        // 1. Criar Cargos
+        // ─── 1. Cargos ───────────────────────────────────────────────
         const roleMap = new Map<string, Role>();
-        
         if (schema.roles && Array.isArray(schema.roles)) {
-            for (const roleDef of schema.roles) {
+            for (let i = 0; i < schema.roles.length; i++) {
+                const roleDef = schema.roles[i];
                 try {
                     const permissions = (roleDef.permissions || []).map(p => {
                         const perm = PermissionFlagsBits[p as keyof typeof PermissionFlagsBits];
@@ -379,94 +507,194 @@ Inclua canais de voz com limites apropriados.
                         permissions: permissions,
                         hoist: roleDef.hoist || false,
                         mentionable: roleDef.mentionable || false,
-                        reason: 'Server Builder AI Premium'
+                        reason: 'Server Builder AI'
                     });
 
-                    
                     roleMap.set(roleDef.name, role);
-                    notify(`✅ Cargo criado: ${role.name}`);
-                } catch (error) {
-                    logger.error(`Erro ao criar cargo ${roleDef.name}:`, { error: error as any });
+                    result.role_ids.push(role.id);
+                    notify({ phase: 'roles', current: i + 1, total: roleCount, label: `Cargo: ${role.name}` });
+                } catch (error: any) {
+                    result.errors.push(`Cargo ${roleDef.name}: ${error?.message || 'erro'}`);
+                    logger.error(`Erro ao criar cargo ${roleDef.name}:`, { error });
                 }
             }
         }
 
-        // 2. Criar Estrutura de Canais
+        // ─── 2. Categorias + Canais ──────────────────────────────────
+        let channelIdx = 0;
         if (schema.categories && Array.isArray(schema.categories)) {
-            for (const catDef of schema.categories) {
+            for (let ci = 0; ci < schema.categories.length; ci++) {
+                const catDef = schema.categories[ci];
+                let category: any;
                 try {
-                    const category = await guild.channels.create({
+                    category = await guild.channels.create({
                         name: catDef.name,
                         type: ChannelType.GuildCategory,
-                        reason: 'Server Builder AI Premium'
+                        reason: 'Server Builder AI'
                     });
+                    result.category_ids.push(category.id);
+                    notify({
+                        phase: 'categories',
+                        current: ci + 1,
+                        total: categoryCount,
+                        label: `Categoria: ${catDef.name}`
+                    });
+                } catch (error: any) {
+                    result.errors.push(`Categoria ${catDef.name}: ${error?.message || 'erro'}`);
+                    logger.error(`Erro ao criar categoria ${catDef.name}`, { error });
+                    continue;
+                }
 
-                    if (catDef.channels && Array.isArray(catDef.channels)) {
-                        for (const chanDef of catDef.channels) {
-                            try {
-                                const permissionOverwrites: any[] = [];
-                                
-                                // Configurar privacidade
-                                if (chanDef.is_private) {
-                                    permissionOverwrites.push({
-                                        id: guild.id,
-                                        deny: [PermissionFlagsBits.ViewChannel],
-                                    });
-                                }
+                if (!catDef.channels || !Array.isArray(catDef.channels)) continue;
 
-                                // Adicionar permissões de cargos
-                                if (chanDef.allowed_roles) {
-                                    for (const roleName of chanDef.allowed_roles) {
-                                        const role = roleMap.get(roleName);
-                                        if (role) {
-                                            permissionOverwrites.push({
-                                                id: role.id,
-                                                allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-                                            });
-                                        }
-                                    }
-                                }
+                for (const chanDef of catDef.channels) {
+                    channelIdx++;
+                    try {
+                        const channelType = this.getChannelType(chanDef.type);
+                        const isVoiceType = [ChannelType.GuildVoice, ChannelType.GuildStageVoice].includes(channelType);
 
-                                const channelType = this.getChannelType(chanDef.type);
-                                const isVoiceType = [ChannelType.GuildVoice, ChannelType.GuildStageVoice].includes(channelType);
+                        const permissionOverwrites = this.buildChannelPermissions(
+                            guild,
+                            chanDef,
+                            roleMap
+                        );
 
-                                const channelOptions: any = {
-                                    name: chanDef.name,
-                                    type: channelType,
-                                    parent: category.id,
-                                    permissionOverwrites,
-                                    reason: 'Server Builder AI Premium'
-                                };
-
-                                // Configurações específicas por tipo
-                                if (channelType === ChannelType.GuildText || channelType === ChannelType.GuildAnnouncement) {
-                                    if (chanDef.description) channelOptions.topic = chanDef.description;
-                                    if (chanDef.slowmode) channelOptions.rateLimitPerUser = chanDef.slowmode;
-                                    if (chanDef.nsfw) channelOptions.nsfw = chanDef.nsfw;
-                                }
-
-                                if (isVoiceType && chanDef.user_limit !== undefined) {
-                                    channelOptions.userLimit = chanDef.user_limit;
-                                }
-
-                                await guild.channels.create(channelOptions);
-                                
-                                const limitInfo = isVoiceType && chanDef.user_limit ? ` (limite: ${chanDef.user_limit})` : '';
-                                logger.info(`📢 Canal criado: ${chanDef.name} [${chanDef.type}]${limitInfo}`);
-
-                            } catch (err) {
-                                logger.error(`Erro ao criar canal ${chanDef.name}`, { error: err as any });
+                        let effectiveType = channelType;
+                        // Fallback Community: se servidor nao tem Community feature,
+                        // converte Announcement/Forum em Text e Stage em Voice.
+                        if (!isCommunity) {
+                            if (channelType === ChannelType.GuildAnnouncement || channelType === ChannelType.GuildForum) {
+                                effectiveType = ChannelType.GuildText;
+                            } else if (channelType === ChannelType.GuildStageVoice) {
+                                effectiveType = ChannelType.GuildVoice;
                             }
                         }
+
+                        const channelOptions: any = {
+                            name: chanDef.name,
+                            type: effectiveType,
+                            parent: category.id,
+                            permissionOverwrites,
+                            reason: 'Server Builder AI'
+                        };
+
+                        if (effectiveType === ChannelType.GuildText || effectiveType === ChannelType.GuildAnnouncement) {
+                            if (chanDef.description) channelOptions.topic = chanDef.description;
+                            if (chanDef.slowmode) channelOptions.rateLimitPerUser = chanDef.slowmode;
+                            if (chanDef.nsfw) channelOptions.nsfw = chanDef.nsfw;
+                        }
+                        if (isVoiceType && chanDef.user_limit !== undefined) {
+                            channelOptions.userLimit = chanDef.user_limit;
+                        }
+
+                        const created = await guild.channels.create(channelOptions);
+                        result.channel_ids.push(created.id);
+
+                        notify({
+                            phase: 'channels',
+                            current: channelIdx,
+                            total: channelCount,
+                            label: `Canal: ${chanDef.name}`
+                        });
+                    } catch (err: any) {
+                        result.errors.push(`Canal ${chanDef.name}: ${err?.message || 'erro'}`);
+                        logger.error(`Erro ao criar canal ${chanDef.name}`, { err });
                     }
-                    notify(`📂 Categoria criada: ${catDef.name} (${catDef.channels?.length || 0} canais)`);
-                } catch (error) {
-                    logger.error(`Erro ao criar categoria ${catDef.name}`, { error: error as any });
                 }
             }
         }
-        
-        notify(`✨ Construção PREMIUM concluída! ${categoryCount} categorias, ${channelCount} canais criados.`);
+
+        // ─── 3. Mensagens iniciais ───────────────────────────────────
+        if (messageCount > 0) {
+            let msgIdx = 0;
+            for (const cat of schema.categories || []) {
+                for (const chDef of cat.channels || []) {
+                    if (!chDef.initial_message?.trim()) continue;
+                    msgIdx++;
+                    try {
+                        // Localizar canal recem-criado pelo nome dentro da categoria certa
+                        const created = guild.channels.cache.find(
+                            c => c.name === chDef.name && (c as any).parent?.name === cat.name
+                        ) as TextChannel | undefined;
+
+                        if (created && typeof (created as any).send === 'function') {
+                            await created.send({ content: chDef.initial_message!.slice(0, 2000) });
+                            notify({
+                                phase: 'messages',
+                                current: msgIdx,
+                                total: messageCount,
+                                label: `Mensagem em ${chDef.name}`
+                            });
+                        }
+                    } catch (err: any) {
+                        result.errors.push(`Mensagem inicial em ${chDef.name}: ${err?.message || 'erro'}`);
+                    }
+                }
+            }
+        }
+
+        notify({
+            phase: 'done',
+            current: channelCount,
+            total: channelCount,
+            label: `Concluido: ${roleCount} cargos, ${categoryCount} categorias, ${channelCount} canais`
+        });
+
+        return result;
+    }
+
+    /** Constroi permission overwrites para is_private e is_readonly. */
+    private buildChannelPermissions(
+        guild: Guild,
+        chanDef: ServerChannel,
+        roleMap: Map<string, Role>
+    ): any[] {
+        const overwrites: any[] = [];
+
+        // Private: nega ViewChannel para @everyone, permite para allowed_roles
+        if (chanDef.is_private) {
+            overwrites.push({
+                id: guild.id, // @everyone
+                deny: [PermissionFlagsBits.ViewChannel],
+            });
+            for (const roleName of chanDef.allowed_roles || []) {
+                const role = roleMap.get(roleName);
+                if (role) {
+                    overwrites.push({
+                        id: role.id,
+                        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+                    });
+                }
+            }
+        }
+
+        // Readonly: nega SendMessages para @everyone, permite para writable_roles
+        if (chanDef.is_readonly) {
+            const existing = overwrites.find(o => o.id === guild.id);
+            if (existing) {
+                existing.deny = [...(existing.deny || []), PermissionFlagsBits.SendMessages];
+            } else {
+                overwrites.push({
+                    id: guild.id,
+                    deny: [PermissionFlagsBits.SendMessages],
+                });
+            }
+            for (const roleName of chanDef.writable_roles || []) {
+                const role = roleMap.get(roleName);
+                if (!role) continue;
+                const existingRole = overwrites.find(o => o.id === role.id);
+                if (existingRole) {
+                    existingRole.allow = [...(existingRole.allow || []), PermissionFlagsBits.SendMessages];
+                } else {
+                    overwrites.push({
+                        id: role.id,
+                        allow: [PermissionFlagsBits.SendMessages],
+                    });
+                }
+            }
+        }
+
+        return overwrites;
     }
 
     /**

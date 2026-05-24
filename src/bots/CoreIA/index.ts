@@ -41,8 +41,6 @@ import {
     checkAiLimit,
     incrementAiUsage,
     getLimitMessage,
-    checkServerGenLimit,
-    incrementServerGenUsage,
 } from '../../shared/services';
 import { serverBuilder } from '../../shared/services/server-builder.service';
 import { getBrandingFooter, applyBranding } from '../../shared/services/branding.service';
@@ -55,6 +53,11 @@ import { commandEngine } from '../custom-commands/engine';
 import { customCommandService } from '../custom-commands/service';
 import { setupPrivateCallsEvents, PRIVATE_CALLS_EVENTS } from '../private-calls/events';
 import { heartbeatService } from '../../shared/services/heartbeat.service';
+import {
+    handleConstruirServidor,
+    handleServerBuilderButton,
+    handleDesfazerServidor,
+} from '../server-builder/command';
 
 
 let dbConnected = false;
@@ -854,6 +857,12 @@ client.on('interactionCreate', async (interaction) => {
 
     const customId = interaction.customId;
 
+    // Server Builder buttons (confirm/regen/cancel)
+    if (customId.startsWith('srvgen:')) {
+        await handleServerBuilderButton(interaction);
+        return;
+    }
+
     // Handle GIF interaction buttons: gif_retribuir:category:originalUserId or gif_action:category:originalUserId
     if (!customId.startsWith('gif_retribuir:') && !customId.startsWith('gif_action:')) return;
 
@@ -1004,70 +1013,13 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'construir-servidor') {
-        logger.info('🏗️ Comando /construir-servidor recebido');
-        try {
-            const theme = interaction.options.getString('tema', true);
-            const guildId = interaction.guildId!;
+        await handleConstruirServidor(interaction);
+        return;
+    }
 
-            // ⚡ DEFER FIRST (Prevent 3s timeout)
-            await interaction.deferReply({ ephemeral: false });
-            logger.info('🏗️ DeferReply enviado');
-
-            // 🛑 Check Server Generation Limit
-            const limitCheck = await checkServerGenLimit(interaction.user.id);
-            if (!limitCheck.allowed) {
-                const planNames: Record<string, string> = { free: 'Free', starter: 'Starter', pro: 'Pro', ultimate: 'Ultimate' };
-                const limitEmbed = new EmbedBuilder()
-                    .setTitle('⚠️ Limite de Gerações Atingido')
-                    .setDescription(`Você utilizou todas as **${limitCheck.limit} geração(ões) de servidor** disponíveis este mês no plano **${planNames[limitCheck.plan] || limitCheck.plan}**.\n\nPara gerar mais servidores, o **dono do servidor** pode fazer upgrade no painel.`)
-                    .setColor(0xFFA500)
-                    .setFooter({ text: `Plano: ${planNames[limitCheck.plan] || limitCheck.plan} • Limite: ${limitCheck.limit}/mês` })
-                    .setTimestamp();
-                await interaction.editReply({ embeds: [limitEmbed] });
-                return;
-            }
-
-            logger.info(`🏗️ Tema: ${theme}`);
-
-            // 1. Gerar Arquitetura
-            const schema = await serverBuilder.generateServerPlan(theme);
-
-            if (!schema) {
-                await interaction.editReply('❌ Falha ao projetar o servidor. A IA não retornou um plano válido. Tente novamente.');
-                return;
-            }
-
-            const guild = interaction.guild || await client.guilds.fetch(guildId);
-            await interaction.editReply(`📐 Plano gerado! Criando ${schema.roles.length} cargos e ${schema.categories.length} categorias...`);
-
-            // 2. Construir
-            await serverBuilder.buildServer(guild, schema, async (msg) => {
-                logger.info(msg);
-            });
-
-            // ✅ Increment Usage
-            await incrementServerGenUsage(interaction.user.id);
-
-            await interaction.followUp({
-                content: `✅ **Servidor Construído com Sucesso!** 🚀\nTema: ${theme.substring(0, 100)}${theme.length > 100 ? '...' : ''}\n\n*Nota: Ajuste as permissões de canais se necessário.*`,
-                ephemeral: false
-            });
-
-        } catch (error) {
-            const errorMsg = String((error as any).message || 'Erro desconhecido').substring(0, 1800);
-            logger.error('Erro ao construir servidor:', { error: error as any });
-            try {
-                // Tenta responder se ainda não tiver respondido, ou editar se já tiver diferido
-                if (interaction.deferred || interaction.replied) {
-                    await interaction.followUp({ content: `❌ Ocorreu um erro: ${errorMsg}`, ephemeral: true });
-                } else {
-                    await interaction.reply({ content: `❌ Ocorreu um erro: ${errorMsg}`, ephemeral: true });
-                }
-            } catch (err) {
-                // Se falhar até em reportar o erro (ex: Unknown Interaction), apenas loga
-                console.error('Erro crítico na interação (possível timeout/duplicação):', err);
-            }
-        }
+    if (interaction.commandName === 'desfazer-servidor') {
+        await handleDesfazerServidor(interaction);
+        return;
     }
 
     else if (interaction.commandName === 'ajustar-servidor') {
@@ -1281,7 +1233,49 @@ const commands = [
             opt.setName('tema')
                 .setDescription('Ex: RPG Medieval com economia e 3 classes')
                 .setRequired(true)
+        )
+        .addStringOption(opt =>
+            opt.setName('estilo')
+                .setDescription('Estilo do servidor (afeta categorias e canais sugeridos)')
+                .setRequired(false)
+                .addChoices(
+                    { name: '🎮 Gaming', value: 'gaming' },
+                    { name: '👥 Comunidade', value: 'comunidade' },
+                    { name: '🎲 RPG', value: 'rpg' },
+                    { name: '📚 Educacional', value: 'educacional' },
+                    { name: '🏢 Empresa', value: 'empresa' },
+                    { name: '✨ Outro', value: 'outro' },
+                )
+        )
+        .addStringOption(opt =>
+            opt.setName('tamanho')
+                .setDescription('Quantidade de canais/cargos a gerar')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'Enxuto (~10 canais)', value: 'enxuto' },
+                    { name: 'Médio (~20 canais)', value: 'medio' },
+                    { name: 'Completo (~30+ canais)', value: 'completo' },
+                )
+        )
+        .addStringOption(opt =>
+            opt.setName('idioma')
+                .setDescription('Idioma dos nomes e descrições')
+                .setRequired(false)
+                .addChoices(
+                    { name: 'Português (BR)', value: 'pt' },
+                    { name: 'English', value: 'en' },
+                    { name: 'Español', value: 'es' },
+                )
+        )
+        .addBooleanOption(opt =>
+            opt.setName('considerar_existente')
+                .setDescription('Se true (padrão), a IA evita duplicar canais/cargos que já existem')
+                .setRequired(false)
         ),
+    new SlashCommandBuilder()
+        .setName('desfazer-servidor')
+        .setDescription('↩️ Reverte a última geração de servidor (até 24h)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder()
         .setName('ajustar-servidor')
         .setDescription('🔧 Modifica canais/cargos usando linguagem natural')

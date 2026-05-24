@@ -397,6 +397,22 @@ CREATE TABLE IF NOT EXISTS server_generation_usage (
     count INTEGER DEFAULT 0,
     PRIMARY KEY (user_id, month_year)
 );
+
+-- Server Generations (Historico para suporte a undo)
+CREATE TABLE IF NOT EXISTS server_generations (
+    id UUID PRIMARY KEY,
+    guild_id VARCHAR(20) NOT NULL,
+    user_id VARCHAR(20) NOT NULL,
+    theme TEXT NOT NULL,
+    schema JSONB NOT NULL,
+    role_ids TEXT[] DEFAULT '{}',
+    category_ids TEXT[] DEFAULT '{}',
+    channel_ids TEXT[] DEFAULT '{}',
+    undone BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_server_generations_guild ON server_generations(guild_id, created_at DESC);
 `;
 
 export async function initializeSchema(): Promise<void> {
@@ -906,6 +922,58 @@ export async function getPaymentsBySubscription(subscriptionId: string): Promise
         [subscriptionId]
     );
     return result.rows;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏗️ SERVER GENERATIONS (Historico para undo)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ServerGeneration extends QueryResultRow {
+    id: string;
+    guild_id: string;
+    user_id: string;
+    theme: string;
+    schema: any;
+    role_ids: string[];
+    category_ids: string[];
+    channel_ids: string[];
+    undone: boolean;
+    created_at: Date;
+}
+
+export async function saveServerGeneration(
+    id: string,
+    guildId: string,
+    userId: string,
+    theme: string,
+    schema: any,
+    roleIds: string[],
+    categoryIds: string[],
+    channelIds: string[]
+): Promise<ServerGeneration> {
+    const result = await query<ServerGeneration>(
+        `INSERT INTO server_generations
+         (id, guild_id, user_id, theme, schema, role_ids, category_ids, channel_ids)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [id, guildId, userId, theme, JSON.stringify(schema), roleIds, categoryIds, channelIds]
+    );
+    return result.rows[0];
+}
+
+export async function getLastServerGeneration(guildId: string): Promise<ServerGeneration | null> {
+    const result = await query<ServerGeneration>(
+        `SELECT * FROM server_generations
+         WHERE guild_id = $1 AND undone = false
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [guildId]
+    );
+    return result.rows[0] || null;
+}
+
+export async function markServerGenerationUndone(id: string): Promise<void> {
+    await query(`UPDATE server_generations SET undone = true WHERE id = $1`, [id]);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

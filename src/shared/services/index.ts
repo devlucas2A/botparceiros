@@ -48,11 +48,15 @@ export {
     getCustomCommand,
     deleteCustomCommand,
     toggleCustomCommand,
+    // Server Generations
+    saveServerGeneration,
+    getLastServerGeneration,
+    markServerGenerationUndone,
     // Cleanup
     closePool
 } from './database';
 
-export type { GuildConfig, AuditLog, PrivateCall, Ticket, TicketCategory, CustomCommand } from './database';
+export type { GuildConfig, AuditLog, PrivateCall, Ticket, TicketCategory, CustomCommand, ServerGeneration } from './database';
 
 export { getUserPlan, getPlanUpgradeMessage, canUseFeature } from './plan-features';
 export { checkAiLimit, incrementAiUsage, getLimitMessage, checkServerGenLimit, incrementServerGenUsage, syncRedisLimitsToDatabase } from './ai-limit.service';
