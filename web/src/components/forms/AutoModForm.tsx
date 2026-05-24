@@ -54,6 +54,9 @@ export function AutoModForm({ config, guildId, user }: { config: any, guildId: s
 
     const [prohibitedWords, setProhibitedWords] = useState<string[]>(config?.prohibited_words || []);
     const [newWord, setNewWord] = useState("");
+    const [automodAction, setAutomodAction] = useState<AutoModConfig['automod_action']>(
+        config?.automod_action || 'delete'
+    );
 
     const handleAddWord = (e: React.KeyboardEvent | React.MouseEvent) => {
         if (e.type === 'keydown' && (e as React.KeyboardEvent).key !== 'Enter') return;
@@ -201,7 +204,8 @@ export function AutoModForm({ config, guildId, user }: { config: any, guildId: s
                                     <select
                                         id="automodAction"
                                         name="automodAction"
-                                        defaultValue={config?.automod_action || 'delete'}
+                                        value={automodAction}
+                                        onChange={(e) => setAutomodAction(e.target.value as AutoModConfig['automod_action'])}
                                         className="w-full h-10 px-3 rounded-md border border-zinc-800 bg-zinc-950 text-sm text-white focus:outline-hidden focus:ring-2 focus:ring-violet-500/50"
                                     >
                                         <option value="delete">Apagar Mensagem</option>
@@ -211,19 +215,26 @@ export function AutoModForm({ config, guildId, user }: { config: any, guildId: s
                                     </select>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="automodTimeoutDuration" className="text-zinc-400 text-sm">Duração do Castigo (minutos)</Label>
-                                    <Input
-                                        id="automodTimeoutDuration"
+                                {automodAction === 'timeout' ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="automodTimeoutDuration" className="text-zinc-400 text-sm">Duração do Castigo (minutos)</Label>
+                                        <Input
+                                            id="automodTimeoutDuration"
+                                            name="automodTimeoutDuration"
+                                            type="number"
+                                            placeholder="Ex: 5"
+                                            defaultValue={config?.automod_timeout_duration || 0}
+                                            min="1"
+                                            className="bg-black/50 border-white/10 text-white rounded-xl focus:border-violet-500/50 h-10 placeholder:text-zinc-600"
+                                        />
+                                    </div>
+                                ) : (
+                                    <input
+                                        type="hidden"
                                         name="automodTimeoutDuration"
-                                        type="number"
-                                        placeholder="Ex: 5"
-                                        defaultValue={config?.automod_timeout_duration || 0}
-                                        min="1"
-                                        className="bg-black/50 border-white/10 text-white rounded-xl focus:border-violet-500/50 h-10 placeholder:text-zinc-600"
+                                        value={config?.automod_timeout_duration || 0}
                                     />
-                                    <p className="text-[10px] text-zinc-500">Apenas se a ação for &quot;Castigo&quot;.</p>
-                                </div>
+                                )}
 
                                 <div className="col-span-1 md:col-span-2 space-y-2">
                                     <Label htmlFor="automodBypassRoles" className="text-zinc-400 text-sm">Cargos que Ignoram AutoMod</Label>

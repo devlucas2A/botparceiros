@@ -6,12 +6,11 @@ import { updatePrivateCallsConfig } from '@/actions/guild-actions';
 import { GuildConfig } from '@shared/services/database';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Phone, Check, Loader2, Save, Hash, Shield, UserCog } from 'lucide-react';
-import { clsx } from 'clsx';
+import { Phone, Loader2, Save, Hash, UserCog } from 'lucide-react';
 import { toast } from 'sonner';
+import { RoleSelect } from '@/components/discord/RoleSelect';
+import { CategorySelect } from '@/components/discord/CategorySelect';
 
 interface PrivateCallsFormProps {
     config: GuildConfig | null;
@@ -42,14 +41,17 @@ function SubmitButton() {
 
 export function PrivateCallsForm({ config, guildId }: PrivateCallsFormProps) {
     const [enabled, setEnabled] = useState(config?.private_calls_enabled || false);
+    const [categoryId, setCategoryId] = useState(config?.private_calls_category_id || '');
+    const [managerRole, setManagerRole] = useState(config?.private_calls_manager_role || '');
+    const [allowedRoles, setAllowedRoles] = useState<string[]>(
+        config?.private_calls_allowed_roles || []
+    );
 
     async function handleSubmit(formData: FormData) {
         formData.set('privateCallsEnabled', enabled.toString());
-        const allowedRoles = formData.get('privateCallsAllowedRoles') as string;
-        if (allowedRoles) {
-            const rolesArray = allowedRoles.split(',').map(id => id.trim()).filter(Boolean);
-            formData.set('privateCallsAllowedRoles', JSON.stringify(rolesArray));
-        }
+        formData.set('privateCallsCategoryId', categoryId);
+        formData.set('privateCallsManagerRole', managerRole);
+        formData.set('privateCallsAllowedRoles', JSON.stringify(allowedRoles));
 
         const result = await updatePrivateCallsConfig({}, formData);
 
@@ -115,41 +117,39 @@ export function PrivateCallsForm({ config, guildId }: PrivateCallsFormProps) {
                             </Label>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Category ID */}
+                                {/* Categoria pai */}
                                 <div className="space-y-2">
-                                    <Label htmlFor="privateCallsCategoryId" className="text-zinc-400 text-sm">ID da Categoria Pai</Label>
-                                    <Input
-                                        id="privateCallsCategoryId"
-                                        name="privateCallsCategoryId"
-                                        placeholder="Ex: 123456789012345678"
-                                        defaultValue={config?.private_calls_category_id || ''}
-                                        className="bg-black/50 border-white/10 text-white rounded-xl focus:border-violet-500/50 h-10 placeholder:text-zinc-600 transition-all hover:border-white/20"
+                                    <Label className="text-zinc-400 text-sm">Categoria Pai</Label>
+                                    <CategorySelect
+                                        guildId={guildId}
+                                        value={categoryId}
+                                        onChange={setCategoryId}
+                                        placeholder="Selecione uma categoria..."
                                     />
                                     <p className="text-[10px] text-zinc-500">Categoria onde os canais serão criados.</p>
                                 </div>
 
-                                {/* Manager Role */}
+                                {/* Cargo gerente */}
                                 <div className="space-y-2">
-                                    <Label htmlFor="privateCallsManagerRole" className="text-zinc-400 text-sm">Cargo Gerente (ID)</Label>
-                                    <Input
-                                        id="privateCallsManagerRole"
-                                        name="privateCallsManagerRole"
-                                        placeholder="Ex: 123456789012345678"
-                                        defaultValue={config?.private_calls_manager_role || ''}
-                                        className="bg-black/50 border-white/10 text-white rounded-xl focus:border-violet-500/50 h-10 placeholder:text-zinc-600 transition-all hover:border-white/20"
+                                    <Label className="text-zinc-400 text-sm">Cargo Gerente</Label>
+                                    <RoleSelect
+                                        guildId={guildId}
+                                        value={managerRole}
+                                        onChange={setManagerRole}
+                                        placeholder="Selecione um cargo..."
                                     />
                                     <p className="text-[10px] text-zinc-500">Cargo que pode gerenciar qualquer call.</p>
                                 </div>
 
-                                {/* Allowed Roles */}
+                                {/* Cargos permitidos (multi) */}
                                 <div className="col-span-1 md:col-span-2 space-y-2">
-                                    <Label htmlFor="privateCallsAllowedRoles" className="text-zinc-400 text-sm">Cargos Permitidos (IDs)</Label>
-                                    <Input
-                                        id="privateCallsAllowedRoles"
-                                        name="privateCallsAllowedRoles"
-                                        placeholder="IDs separados por vírgula (Ex: 123456, 789012)"
-                                        defaultValue={config?.private_calls_allowed_roles?.join(', ') || ''}
-                                        className="bg-black/50 border-white/10 text-white rounded-xl focus:border-violet-500/50 h-10 placeholder:text-zinc-600 transition-all hover:border-white/20"
+                                    <Label className="text-zinc-400 text-sm">Cargos Permitidos</Label>
+                                    <RoleSelect
+                                        multi
+                                        guildId={guildId}
+                                        value={allowedRoles}
+                                        onChange={setAllowedRoles}
+                                        placeholder="Selecione um ou mais cargos..."
                                     />
                                     <p className="text-[10px] text-zinc-500">Deixe vazio para permitir que todos usem.</p>
                                 </div>
