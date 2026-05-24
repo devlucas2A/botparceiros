@@ -3,6 +3,7 @@
     "features": "Funcionalidades",
     "pricing": "Planos",
     "community": "Comunidade",
+    "docs": "Documentação",
     "login": "Entrar"
   },
   "hero": {
@@ -34,6 +35,22 @@
       "dashboard": {
         "title": "Dashboard",
         "desc": "Controle total pelo navegador."
+      },
+      "welcome": {
+        "title": "Boas-vindas",
+        "desc": "Banner gerado por IA com avatar, mensagem e fundo customizável."
+      },
+      "calls": {
+        "title": "Calls Privadas",
+        "desc": "Canais de voz temporários que somem quando todos saem."
+      },
+      "custom": {
+        "title": "Comandos Custom",
+        "desc": "Descreva em texto, a IA gera o comando slash completo."
+      },
+      "analytics": {
+        "title": "Analytics",
+        "desc": "Métricas de engajamento e uso em tempo real."
       }
     }
   },

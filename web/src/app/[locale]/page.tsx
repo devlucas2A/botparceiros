@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Globe, Check, Bot, Shield, Zap, Server } from "lucide-react";
+import { ArrowRight, Globe, Check, Bot, Shield, Zap, Server, Hand, Phone, Wand2, BarChart3 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { motion } from "framer-motion";
@@ -83,6 +83,7 @@ export default function Home() {
                             <Link href="#features" className="hover:text-white transition-colors uppercase tracking-wide">{t('nav.features')}</Link>
                             <Link href="#pricing" className="hover:text-white transition-colors uppercase tracking-wide">{t('nav.pricing')}</Link>
                             <Link href="#community" className="hover:text-white transition-colors uppercase tracking-wide">{t('nav.community')}</Link>
+                            <Link href={`/${locale}/docs`} className="hover:text-white transition-colors uppercase tracking-wide">{t('nav.docs')}</Link>
                         </div>
 
                         <div className="flex items-center gap-4">
@@ -216,10 +217,30 @@ export default function Home() {
 
                 {/* Features Section - Modern Pro Style */}
                 <section id="features" className="py-32 border-t border-white/5 relative z-10 overflow-hidden">
-                    {/* Subtle ambient glows */}
-                    <div className="absolute top-10 left-[20%] w-[600px] h-[300px] bg-purple-500/10 blur-[150px] rounded-full pointer-events-none"></div>
-                    
-                    <div className="max-w-7xl mx-auto px-8">
+                    {/* Dot grid background — pontos sutis ate as bordas */}
+                    <div
+                        className="absolute inset-0 pointer-events-none opacity-[0.18]"
+                        style={{
+                            backgroundImage: 'radial-gradient(rgba(255,255,255,0.4) 1px, transparent 1px)',
+                            backgroundSize: '24px 24px',
+                            maskImage: 'radial-gradient(ellipse at center, black 50%, transparent 90%)',
+                            WebkitMaskImage: 'radial-gradient(ellipse at center, black 50%, transparent 90%)',
+                        }}
+                    />
+
+                    {/* Aurora ambient — duas manchas de cor que pulsam lentamente */}
+                    <motion.div
+                        className="absolute top-[10%] left-[15%] w-[500px] h-[500px] bg-purple-500/15 blur-[120px] rounded-full pointer-events-none"
+                        animate={{ x: [0, 60, 0], y: [0, -30, 0] }}
+                        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    <motion.div
+                        className="absolute bottom-[10%] right-[10%] w-[500px] h-[500px] bg-blue-500/15 blur-[120px] rounded-full pointer-events-none"
+                        animate={{ x: [0, -60, 0], y: [0, 40, 0] }}
+                        transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+
+                    <div className="max-w-7xl mx-auto px-8 relative z-10">
                         <motion.div 
                             initial={{ opacity: 0, y: 30 }}
                             whileInView={{ opacity: 1, y: 0 }}
@@ -386,6 +407,149 @@ export default function Home() {
                                             <div className="w-1/2 h-1.5 bg-zinc-800 rounded-full"></div>
                                          </div>
                                      </div>
+                                </div>
+                            </motion.div>
+
+                            {/* Card 5: Boas-vindas */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.5, delay: 0.5 }}
+                                className="md:col-span-1 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-cyan-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-cyan-500/10 flex flex-col justify-between"
+                            >
+                                <div className="absolute inset-0 bg-linear-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+
+                                <div className="relative z-10 pt-2">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-cyan-500/20 group-hover:border-cyan-500/40 transition-all duration-500">
+                                        <Hand className="text-zinc-300 group-hover:text-cyan-400 w-6 h-6 transition-colors" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.welcome.title')}</h3>
+                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.welcome.desc')}</p>
+                                </div>
+
+                                {/* Mini avatar + ring */}
+                                <div className="absolute bottom-6 right-6 w-16 h-16 rounded-full border-2 border-cyan-500/30 group-hover:border-cyan-400/60 transition-all duration-700 flex items-center justify-center group-hover:scale-110">
+                                    <div className="w-10 h-10 rounded-full bg-linear-to-br from-cyan-500/40 to-blue-500/40"></div>
+                                </div>
+                            </motion.div>
+
+                            {/* Card 6: Comandos Custom (Wide) */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.5, delay: 0.6 }}
+                                className="md:col-span-2 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-amber-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-amber-500/10 flex flex-col justify-between"
+                            >
+                                <div className="absolute inset-0 bg-linear-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+
+                                <div className="relative z-10 max-w-[300px] pt-2">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-amber-500/20 group-hover:border-amber-500/40 transition-all duration-500">
+                                        <Wand2 className="text-zinc-300 group-hover:text-amber-400 w-6 h-6 transition-colors" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.custom.title')}</h3>
+                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.custom.desc')}</p>
+                                </div>
+
+                                {/* Slash command mockup */}
+                                <div className="absolute right-[32px] top-[32px] bottom-[32px] w-1/2 flex items-center justify-end">
+                                    <div className="w-full max-w-[340px] bg-[#050505] border border-white/10 rounded-[12px] p-4 shadow-2xl relative translate-x-4 group-hover:translate-x-0 transition-transform duration-700 ease-out space-y-2">
+                                        <div className="flex items-center gap-2 text-[11px] font-mono">
+                                            <span className="text-amber-400">/</span>
+                                            <span className="text-zinc-200">enviar-mensagem</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-mono pl-3 text-zinc-500">
+                                            <span className="text-amber-300/60">canal:</span>
+                                            <span className="px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-amber-200">#geral</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] font-mono pl-3 text-zinc-500">
+                                            <span className="text-amber-300/60">mensagem:</span>
+                                            <span className="text-zinc-300 truncate">"Olá pessoal!"</span>
+                                        </div>
+                                        <motion.div
+                                            animate={{ opacity: [0.4, 1, 0.4] }}
+                                            transition={{ duration: 2, repeat: Infinity }}
+                                            className="text-[10px] text-amber-300 pt-1 font-mono"
+                                        >
+                                            ✓ gerado por IA
+                                        </motion.div>
+                                    </div>
+                                </div>
+                            </motion.div>
+
+                            {/* Card 7: Calls Privadas */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.5, delay: 0.7 }}
+                                className="md:col-span-1 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-fuchsia-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-fuchsia-500/10 flex flex-col justify-between"
+                            >
+                                <div className="absolute inset-0 bg-linear-to-br from-fuchsia-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+
+                                <div className="relative z-10 pt-2">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-fuchsia-500/20 group-hover:border-fuchsia-500/40 transition-all duration-500">
+                                        <Phone className="text-zinc-300 group-hover:text-fuchsia-400 w-6 h-6 transition-colors" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.calls.title')}</h3>
+                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.calls.desc')}</p>
+                                </div>
+
+                                {/* 3 ondas de audio pulsando */}
+                                <div className="absolute bottom-6 right-6 flex items-end gap-1.5 h-12">
+                                    {[0.4, 0.8, 0.5, 1, 0.6, 0.3].map((h, i) => (
+                                        <motion.div
+                                            key={i}
+                                            animate={{ scaleY: [h, h * 1.4, h] }}
+                                            transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.15 }}
+                                            className="w-1 origin-bottom bg-fuchsia-500/40 group-hover:bg-fuchsia-400/80 rounded-full transition-colors"
+                                            style={{ height: `${h * 100}%` }}
+                                        />
+                                    ))}
+                                </div>
+                            </motion.div>
+
+                            {/* Card 8: Analytics (Wide, last row) */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.5, delay: 0.8 }}
+                                className="md:col-span-3 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-violet-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-violet-500/10"
+                            >
+                                <div className="absolute inset-0 bg-linear-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+
+                                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 h-full">
+                                    <div className="max-w-md">
+                                        <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-violet-500/20 group-hover:border-violet-500/40 transition-all duration-500">
+                                            <BarChart3 className="text-zinc-300 group-hover:text-violet-400 w-6 h-6 transition-colors" />
+                                        </div>
+                                        <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.analytics.title')}</h3>
+                                        <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.analytics.desc')}</p>
+                                    </div>
+
+                                    {/* Metricas placeholder */}
+                                    <div className="grid grid-cols-3 gap-4 w-full md:w-auto md:min-w-[400px]">
+                                        {[
+                                            { label: 'Membros', value: '1.2k', delta: '+12%' },
+                                            { label: 'Mensagens', value: '8.4k', delta: '+34%' },
+                                            { label: 'Tickets', value: '142', delta: '+5%' },
+                                        ].map((m, i) => (
+                                            <motion.div
+                                                key={m.label}
+                                                initial={{ opacity: 0, y: 10 }}
+                                                whileInView={{ opacity: 1, y: 0 }}
+                                                transition={{ duration: 0.5, delay: 0.9 + i * 0.1 }}
+                                                viewport={{ once: true }}
+                                                className="bg-[#050505] border border-white/10 rounded-[10px] p-4 group-hover:border-violet-500/20 transition-colors"
+                                            >
+                                                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1">{m.label}</div>
+                                                <div className="text-2xl font-mono text-white">{m.value}</div>
+                                                <div className="text-[11px] text-emerald-400 mt-1">{m.delta}</div>
+                                            </motion.div>
+                                        ))}
+                                    </div>
                                 </div>
                             </motion.div>
                         </div>

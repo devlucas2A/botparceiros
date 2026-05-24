@@ -3,6 +3,7 @@
     "features": "Features",
     "pricing": "Pricing",
     "community": "Community",
+    "docs": "Docs",
     "login": "Login"
   },
   "hero": {
@@ -34,6 +35,22 @@
       "dashboard": {
         "title": "Dashboard",
         "desc": "Full control via browser."
+      },
+      "welcome": {
+        "title": "Welcome",
+        "desc": "AI-generated banner with avatar, message and custom background."
+      },
+      "calls": {
+        "title": "Private Calls",
+        "desc": "Temporary voice channels that vanish when everyone leaves."
+      },
+      "custom": {
+        "title": "Custom Commands",
+        "desc": "Describe it in text — AI generates the full slash command."
+      },
+      "analytics": {
+        "title": "Analytics",
+        "desc": "Real-time engagement and usage metrics."
       }
     }
   },
