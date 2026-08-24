@@ -1,11 +1,31 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { Check, ShieldCheck, Zap, CreditCard, Calendar, Clock, ArrowUpRight, MessageSquare, Server, Sparkles, Lock, Unlock, TrendingUp } from "lucide-react";
+import { 
+    Check, 
+    ShieldCheck, 
+    Zap, 
+    CreditCard, 
+    Calendar, 
+    Clock, 
+    ArrowUpRight, 
+    MessageSquare, 
+    Server, 
+    Sparkles, 
+    Lock, 
+    Unlock, 
+    TrendingUp,
+    Crown,
+    CheckCircle2,
+    Layers,
+    Bot,
+    Radio
+} from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { SUBSCRIPTION_PLANS } from "@/config/subscription";
+import { SUBSCRIPTION_PLANS, PLAN_LIMITS, PlanId } from "@/config/subscription";
+import { toast } from "sonner";
 
 interface SubscriptionData {
     id: string;
@@ -50,9 +70,20 @@ export default function BillingPage() {
 
     const initializedRef = useRef(false);
 
+    // Toast de confirmação ao retornar do checkout com sucesso
+    useEffect(() => {
+        if (searchParams.get('success') === 'true') {
+            const upgradedPlan = searchParams.get('plan');
+            toast.success("Assinatura Confirmada!", {
+                description: upgradedPlan 
+                    ? `Parabéns! Seu plano ${upgradedPlan.toUpperCase()} está ativo e todos os recursos foram liberados.`
+                    : "Sua assinatura foi processada com sucesso.",
+            });
+        }
+    }, [searchParams]);
+
     // Buscar assinatura ativa
     useEffect(() => {
-        // Adicionamos _t para forçar break cache do navegador/next router
         fetch(`/api/user/subscription?_t=${Date.now()}`)
             .then((res) => res.json())
             .then((data) => {
@@ -66,7 +97,6 @@ export default function BillingPage() {
 
     // Buscar uso do plano
     useEffect(() => {
-        // Envia refresh=true para limpar o planCache no backend e puxar o fresquinho!
         fetch(`/api/user/usage?refresh=true&_t=${Date.now()}`)
             .then((res) => res.json())
             .then((data) => {
@@ -81,30 +111,46 @@ export default function BillingPage() {
     useEffect(() => {
         if (autoParam === 'true' && planParam && !initializedRef.current) {
             initializedRef.current = true;
-            handleSubscribe(planParam);
+            const cycleToUse = intervalParam === 'yearly' ? 'yearly' : 'monthly';
+            handleSubscribe(planParam, cycleToUse);
         }
-    }, [autoParam, planParam]);
+    }, [autoParam, planParam, intervalParam]);
 
-    const handleSubscribe = async (plan: string) => {
+    const handleSubscribe = async (plan: string, cycle?: 'monthly' | 'yearly') => {
+        const activeCycle = cycle || billingCycle;
         setLoading(plan);
+        const toastId = toast.loading(`Iniciando checkout do plano ${plan.toUpperCase()} (${activeCycle === 'yearly' ? 'Anual - 20% OFF' : 'Mensal'})...`);
         try {
             const res = await fetch("/api/checkout/subscription", {
                 method: "POST",
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ plan, interval: billingCycle })
+                body: JSON.stringify({ plan, interval: activeCycle })
             });
             const data = await res.json();
             
             if (res.status === 401) {
+                toast.dismiss(toastId);
+                toast.error("Sessão expirada", { description: "Faça login com o Discord para continuar." });
                 signIn('discord', { callbackUrl: window.location.href });
                 return;
             }
 
+            if (!res.ok || data.error) {
+                toast.dismiss(toastId);
+                toast.error("Falha ao iniciar pagamento", {
+                    description: data.error || "Não foi possível conectar com o processador de pagamento."
+                });
+                return;
+            }
+
             if (data.url) {
+                toast.dismiss(toastId);
+                toast.success("Redirecionando para o pagamento seguro...");
                 window.location.href = data.url;
             }
-        } catch (error) {
-            console.error(error);
+        } catch (error: any) {
+            toast.dismiss(toastId);
+            toast.error("Erro inesperado", { description: error?.message || "Tente novamente em instantes." });
         } finally {
             setLoading(null);
         }
@@ -120,103 +166,125 @@ export default function BillingPage() {
         }
     };
 
-    const getPlanColor = (plan: string) => {
-        switch (plan) {
-            case 'starter': return 'border-white/10';
-            case 'pro': return 'border-purple-500/50';
-            case 'ultimate': return 'border-amber-500/50';
-            default: return 'border-white/10';
-        }
-    };
+    const currentPlanKey = subscription?.status === 'authorized' 
+        ? subscription.plan 
+        : (usage?.plan?.toLowerCase() || 'free');
 
     return (
-        <div className="h-full overflow-y-auto p-8 md:p-12">
-            <div className="max-w-7xl mx-auto">
+        <div className="h-full overflow-y-auto p-6 sm:p-10 font-sans pb-24">
+            <div className="max-w-7xl mx-auto space-y-10">
 
                 {/* ═══════════════════════════════════════════ */}
                 {/* 📋 PAGE HEADER                              */}
                 {/* ═══════════════════════════════════════════ */}
-                <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-white/5">
                     <div>
-                        <h1 className="text-3xl font-serif font-medium mb-2">{t("title")}</h1>
-                        <p className="text-zinc-500">{t("subtitle")}</p>
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-[10px] font-bold tracking-wider uppercase text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+                                Assinatura & Upgrade
+                            </span>
+                        </div>
+                        <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                            Gerenciar Assinatura
+                        </h1>
+                        <p className="text-sm text-zinc-400 mt-1">
+                            Acompanhe o consumo dos seus módulos e escolha o plano perfeito para a sua comunidade.
+                        </p>
                     </div>
 
-                    {/* Toggle */}
-                    <div className="flex items-center gap-1 p-1 bg-white/5 rounded-full border border-white/5 relative">
+                    {/* Toggle Mensal / Anual */}
+                    <div className="flex items-center gap-1 p-1 bg-[#13111C] rounded-full border border-white/10 relative shrink-0 shadow-lg">
                         <button
+                            type="button"
                             onClick={() => setBillingCycle('monthly')}
-                            className={`relative z-10 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${billingCycle === 'monthly' ? 'text-black' : 'text-zinc-400 hover:text-white'}`}
+                            className={`relative z-10 px-5 py-2 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                                billingCycle === 'monthly' ? 'text-black font-black' : 'text-zinc-400 hover:text-white'
+                            }`}
                         >
-                            {tPricing('monthly')}
+                            Mensal
                         </button>
                         <button
+                            type="button"
                             onClick={() => setBillingCycle('yearly')}
-                            className={`relative z-10 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${billingCycle === 'yearly' ? 'text-black' : 'text-zinc-400 hover:text-white'}`}
+                            className={`relative z-10 px-5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                billingCycle === 'yearly' ? 'text-black font-black' : 'text-zinc-400 hover:text-white'
+                            }`}
                         >
-                            {tPricing('yearly')}
+                            <span>Anual</span>
+                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold uppercase ${
+                                billingCycle === 'yearly' ? 'bg-black/20 text-black' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }`}>
+                                -20%
+                            </span>
                         </button>
                         <div
-                            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full transition-all duration-300 shadow-lg ${billingCycle === 'yearly' ? 'translate-x-[calc(100%+4px)]' : 'translate-x-0'}`}
-                        ></div>
+                            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-full transition-all duration-300 shadow-md ${
+                                billingCycle === 'yearly' ? 'translate-x-[calc(100%+4px)]' : 'translate-x-0'
+                            }`}
+                        />
                     </div>
                 </header>
 
-
                 {/* ═══════════════════════════════════════════ */}
-                {/* 📋 ACTIVE SUBSCRIPTION CARD                */}
+                {/* 📋 ACTIVE SUBSCRIPTION CARD (SE HOUVER)      */}
                 {/* ═══════════════════════════════════════════ */}
-                {!subLoading && subscription && (
-                    <div className={`mb-12 p-6 rounded-2xl bg-[#0A0A0C] border-2 ${getPlanColor(subscription.plan)} relative overflow-hidden`}>
-                        <div className="absolute inset-0 bg-linear-to-r from-purple-500/5 via-transparent to-transparent pointer-events-none" />
+                {!subLoading && subscription && subscription.status === 'authorized' && (
+                    <div className="p-6 sm:p-8 rounded-3xl bg-[#0D0D11] border border-purple-500/30 relative overflow-hidden shadow-2xl">
+                        <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
 
-                        <div className="relative z-10">
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="relative z-10 space-y-6">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 <div>
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <h2 className="text-xl font-bold text-white">Sua Assinatura</h2>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusInfo(subscription.status).color}`}>
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <h2 className="text-xl font-bold text-white">Sua Assinatura Ativa</h2>
+                                        <span className={`px-3 py-0.5 rounded-full text-xs font-bold border ${getStatusInfo(subscription.status).color}`}>
                                             {getStatusInfo(subscription.status).label}
                                         </span>
                                     </div>
-                                    <p className="text-zinc-500 text-sm">Gerencie seu plano e informações de cobrança</p>
+                                    <p className="text-xs text-zinc-400">Todos os limites e recursos avançados estão desbloqueados.</p>
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    <span className={`text-2xl font-serif font-bold ${subscription.plan === 'pro' ? 'text-purple-400' : subscription.plan === 'ultimate' ? 'text-amber-400' : 'text-white'}`}>
+                                    <span className="text-2xl font-bold uppercase tracking-wider text-purple-400">
                                         {SUBSCRIPTION_PLANS[subscription.plan]?.name || subscription.plan}
                                     </span>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5 flex items-center gap-3">
-                                    <CreditCard className="w-5 h-5 text-zinc-500" />
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center gap-3">
+                                    <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
+                                        <CreditCard className="w-5 h-5" />
+                                    </div>
                                     <div>
-                                        <p className="text-xs text-zinc-500 uppercase tracking-wider">Plano</p>
-                                        <p className="text-white font-medium">
+                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Valor do Plano</p>
+                                        <p className="text-sm font-bold text-white">
                                             R$ {SUBSCRIPTION_PLANS[subscription.plan]?.price.toFixed(2) || '—'}/mês
                                         </p>
                                     </div>
                                 </div>
 
-                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5 flex items-center gap-3">
-                                    <Calendar className="w-5 h-5 text-zinc-500" />
+                                <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center gap-3">
+                                    <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
+                                        <Calendar className="w-5 h-5" />
+                                    </div>
                                     <div>
-                                        <p className="text-xs text-zinc-500 uppercase tracking-wider">Próxima Cobrança</p>
-                                        <p className="text-white font-medium">
+                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Próxima Renovação</p>
+                                        <p className="text-sm font-bold text-white">
                                             {subscription.nextPayment
                                                 ? new Date(subscription.nextPayment).toLocaleDateString('pt-BR')
-                                                : '—'}
+                                                : 'Assinatura Recorrente'}
                                         </p>
                                     </div>
                                 </div>
 
-                                <div className="bg-zinc-900/50 p-4 rounded-xl border border-white/5 flex items-center gap-3">
-                                    <Clock className="w-5 h-5 text-zinc-500" />
+                                <div className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center gap-3">
+                                    <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
+                                        <Clock className="w-5 h-5" />
+                                    </div>
                                     <div>
-                                        <p className="text-xs text-zinc-500 uppercase tracking-wider">Membro Desde</p>
-                                        <p className="text-white font-medium">
+                                        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Membro Desde</p>
+                                        <p className="text-sm font-bold text-white">
                                             {new Date(subscription.createdAt).toLocaleDateString('pt-BR')}
                                         </p>
                                     </div>
@@ -227,26 +295,15 @@ export default function BillingPage() {
                 )}
 
                 {/* ═══════════════════════════════════════════ */}
-                {/* 📊 PLAN USAGE DASHBOARD                     */}
+                {/* 📊 UTILIZAÇÃO & BENEFÍCIOS                   */}
                 {/* ═══════════════════════════════════════════ */}
                 {!usageLoading && usage && (() => {
-                    const currentPlan = usage.plan;
-                    const planColorMap: Record<string, string> = {
-                        free: 'emerald', starter: 'blue', pro: 'purple', ultimate: 'amber'
-                    };
-                    const accent = planColorMap[currentPlan] || 'zinc';
+                    const currentPlan = currentPlanKey;
 
                     const getPercentage = (current: number, limit: number) => {
-                        if (limit === -1) return 5; // "Unlimited" = tiny bar
+                        if (limit === -1) return 100;
                         if (limit === 0) return 100;
-                        return Math.min((current / limit) * 100, 100);
-                    };
-
-                    const getBarColor = (pct: number, unlimited: boolean) => {
-                        if (unlimited) return 'bg-gradient-to-r from-purple-500 to-cyan-400';
-                        if (pct >= 90) return 'bg-gradient-to-r from-red-500 to-orange-500';
-                        if (pct >= 60) return 'bg-gradient-to-r from-amber-500 to-yellow-400';
-                        return `bg-gradient-to-r from-${accent}-500 to-${accent}-400`;
+                        return Math.min(Math.round((current / limit) * 100), 100);
                     };
 
                     const aiPct = getPercentage(usage.aiMessages.current, usage.aiMessages.limit);
@@ -254,351 +311,457 @@ export default function BillingPage() {
                     const aiUnlimited = usage.aiMessages.limit === -1;
                     const sgUnlimited = usage.serverBuilds.limit === -1;
 
-                    const nextPlan: Record<string, string> = { free: 'Starter', starter: 'Pro', pro: 'Ultimate' };
-                    const showUpgrade = currentPlan !== 'ultimate';
+                    const nextPlanName: Record<string, string> = { free: 'Starter', starter: 'Pro', pro: 'Ultimate' };
                     const upgradePlanKey: Record<string, string> = { free: 'starter', starter: 'pro', pro: 'ultimate' };
+                    const showUpgrade = currentPlan !== 'ultimate';
 
                     const featureList = [
                         { label: 'Boas-vindas Personalizadas', enabled: usage.features.welcome_custom, icon: Sparkles },
-                        { label: 'Calls Privadas', enabled: usage.features.private_calls, icon: MessageSquare },
-                        { label: 'Transcrição de Áudio', enabled: usage.features.transcription, icon: MessageSquare },
-                        { label: 'Whitelabel (Bot Próprio)', enabled: usage.features.whitelabel, icon: Zap },
+                        { label: 'Calls Privadas (Salas)', enabled: usage.features.private_calls, icon: MessageSquare },
+                        { label: 'Transcrição de Áudio', enabled: usage.features.transcription, icon: Radio },
+                        { label: 'Whitelabel (Bot Próprio)', enabled: usage.features.whitelabel, icon: Crown },
                     ];
 
                     return (
-                        <div className="mb-12 rounded-3xl bg-[#09090b] border border-white/5 relative overflow-hidden shadow-2xl backdrop-blur-3xl transition-all duration-300 hover:border-white/10 group">
-                            <div className={`absolute inset-0 bg-gradient-to-br from-${accent}-500/10 via-transparent to-transparent pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity duration-700`} />
-                            
-                            <div className="relative z-10 p-8">
-                                {/* Header */}
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`p-3 rounded-2xl bg-${accent}-500/10 border border-${accent}-500/20 shadow-[0_0_15px_rgba(255,255,255,0.05)]`}>
-                                            <TrendingUp className={`w-6 h-6 text-${accent}-400`} />
+                        <div className="rounded-3xl bg-[#0D0D11] border border-white/5 p-6 sm:p-8 relative overflow-hidden shadow-2xl space-y-6">
+                            {/* Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-white/5">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-md shrink-0">
+                                        <TrendingUp className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white tracking-tight">Utilização & Benefícios</h2>
+                                        <p className="text-xs text-zinc-400 mt-0.5">
+                                            Status e recursos disponíveis no plano <span className="text-emerald-400 font-bold uppercase">{currentPlan}</span>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shrink-0">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span className="text-xs font-bold uppercase tracking-wider">{currentPlan}</span>
+                                </div>
+                            </div>
+
+                            {/* Barras de Consumo */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Mensagens IA */}
+                                <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
+                                                <Bot className="w-4 h-4" />
+                                            </div>
+                                            <span className="text-xs font-bold text-white uppercase tracking-wider">Mensagens IA</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-sm font-bold text-white font-mono">
+                                                {aiUnlimited ? 'Ilimitado' : `${usage.aiMessages.current} / ${usage.aiMessages.limit}`}
+                                            </span>
+                                            <span className="text-[10px] text-zinc-500 ml-1">
+                                                {aiUnlimited ? '(∞)' : 'diário'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                                        <div
+                                            className={`h-full rounded-full transition-all duration-700 ${
+                                                aiUnlimited ? 'bg-purple-500' : aiPct >= 90 ? 'bg-rose-500' : 'bg-purple-500'
+                                            }`}
+                                            style={{ width: `${aiUnlimited ? 100 : aiPct}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Server Builds */}
+                                <div className="bg-black/40 p-5 rounded-2xl border border-white/5 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+                                                <Server className="w-4 h-4" />
+                                            </div>
+                                            <span className="text-xs font-bold text-white uppercase tracking-wider">Geração de Servidores</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-sm font-bold text-white font-mono">
+                                                {sgUnlimited ? 'Ilimitado' : `${usage.serverBuilds.current} / ${usage.serverBuilds.limit}`}
+                                            </span>
+                                            <span className="text-[10px] text-zinc-500 ml-1">
+                                                {sgUnlimited ? '(∞)' : 'mensal'}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5">
+                                        <div
+                                            className={`h-full rounded-full transition-all duration-700 ${
+                                                sgUnlimited ? 'bg-amber-500' : sgPct >= 90 ? 'bg-rose-500' : 'bg-amber-500'
+                                            }`}
+                                            style={{ width: `${sgUnlimited ? 100 : sgPct}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Módulos Desbloqueados */}
+                            <div className="space-y-3 pt-2">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                    Módulos & Recursos Liberados
+                                </h3>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {featureList.map((f) => (
+                                        <div
+                                            key={f.label}
+                                            className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all ${
+                                                f.enabled
+                                                    ? 'bg-emerald-500/5 border-emerald-500/30 text-white'
+                                                    : 'bg-black/40 border-white/5 text-zinc-500 opacity-60'
+                                            }`}
+                                        >
+                                            <div className={`p-2 rounded-xl shrink-0 ${
+                                                f.enabled ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-900 text-zinc-600'
+                                            }`}>
+                                                {f.enabled ? <f.icon className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                            </div>
+                                            <span className="text-xs font-semibold">{f.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex flex-wrap gap-4 pt-1 text-[11px] text-zinc-400">
+                                    <span>AutoMod: <strong className="text-white capitalize">{usage.features.automod_level}</strong></span>
+                                    <span>•</span>
+                                    <span>Categorias de Ticket: <strong className="text-white">{usage.features.ticket_categories === -1 ? 'Ilimitadas' : usage.features.ticket_categories}</strong></span>
+                                </div>
+                            </div>
+
+                            {/* Banner de Upgrade */}
+                            {showUpgrade && (
+                                <div className="p-5 rounded-2xl bg-linear-to-r from-purple-500/10 via-fuchsia-500/10 to-transparent border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2.5 rounded-xl bg-purple-600/20 text-purple-300">
+                                            <Zap className="w-5 h-5" />
                                         </div>
                                         <div>
-                                            <h2 className="text-2xl font-bold text-white tracking-tight">Utilização & Benefícios</h2>
-                                            <p className="text-sm text-zinc-400 mt-1">Monitore e desfrute do plano <span className={`text-${accent}-400 font-semibold capitalize`}>{currentPlan}</span></p>
+                                            <h4 className="text-sm font-bold text-white">Quer mais poder e limites maiores?</h4>
+                                            <p className="text-xs text-zinc-400">
+                                                Faça upgrade para o plano <strong className="text-purple-300">{nextPlanName[currentPlan]}</strong> e libere novos módulos.
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className={`flex items-center gap-2 px-5 py-2.5 rounded-full bg-${accent}-500/10 border border-${accent}-500/30 text-${accent}-400 shadow-[0_0_20px_rgba(var(--${accent}-500-rgb),0.1)]`}>
-                                        <div className={`w-2 h-2 rounded-full bg-${accent}-400 animate-pulse`} />
-                                        <span className="text-sm font-bold uppercase tracking-widest">{currentPlan}</span>
-                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSubscribe(upgradePlanKey[currentPlan])}
+                                        disabled={loading !== null}
+                                        className="px-6 py-2.5 bg-linear-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-purple-950/50 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                                    >
+                                        {loading === upgradePlanKey[currentPlan] ? (
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <>
+                                                <span>Fazer Upgrade</span>
+                                                <ArrowUpRight className="w-4 h-4" />
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
-
-                                {/* Usage Bars */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                                    {/* AI Messages */}
-                                    <div className="bg-zinc-950 p-6 rounded-2xl border border-white/5 relative overflow-hidden group/bar">
-                                        <div className="absolute inset-0 bg-linear-to-b from-transparent to-cyan-500/5 opacity-0 group-hover/bar:opacity-100 transition-opacity" />
-                                        <div className="flex items-center justify-between mb-4 relative z-10">
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-cyan-500/10 rounded-lg">
-                                                    <MessageSquare className="w-5 h-5 text-cyan-400" />
-                                                </div>
-                                                <span className="text-base font-semibold text-zinc-200">Mensagens IA</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-sm font-bold text-white">
-                                                    {aiUnlimited ? 'Ilimitado' : usage.aiMessages.current}
-                                                </span>
-                                                <span className="text-xs text-zinc-500 font-medium ml-1">
-                                                    {aiUnlimited ? '∞/dia' : `/ ${usage.aiMessages.limit} diário`}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="w-full h-3 bg-black rounded-full overflow-hidden border border-white/5 relative z-10">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.2)] ${aiUnlimited ? 'bg-gradient-to-r from-purple-500 via-cyan-400 to-emerald-400 bg-[length:200%_auto] animate-gradient' : aiPct >= 90 ? 'bg-gradient-to-r from-red-500 to-orange-500' : aiPct >= 60 ? 'bg-gradient-to-r from-amber-500 to-yellow-400' : 'bg-gradient-to-r from-cyan-500 to-blue-400'}`}
-                                                style={{ width: `${aiUnlimited ? 100 : aiPct}%` }}
-                                            />
-                                        </div>
-                                        <div className="relative z-10">
-                                            {aiUnlimited && (
-                                                <p className="text-[11px] font-medium text-purple-400 mt-2 flex items-center gap-1.5"><Sparkles className="w-3 h-3"/> Ilimitado no seu plano</p>
-                                            )}
-                                            {!aiUnlimited && aiPct >= 80 && (
-                                                <p className="text-[11px] font-medium text-amber-400 mt-2 flex items-center gap-1.5">⚠️ Aproximando-se do limite</p>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Server Builds */}
-                                    <div className="bg-zinc-950 p-6 rounded-2xl border border-white/5 relative overflow-hidden group/bar">
-                                        <div className="absolute inset-0 bg-linear-to-b from-transparent to-blue-500/5 opacity-0 group-hover/bar:opacity-100 transition-opacity" />
-                                        <div className="flex items-center justify-between mb-4 relative z-10">
-                                            <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-blue-500/10 rounded-lg">
-                                                    <Server className="w-5 h-5 text-blue-400" />
-                                                </div>
-                                                <span className="text-base font-semibold text-zinc-200">Geração Premium</span>
-                                            </div>
-                                            <div className="text-right">
-                                                <span className="text-sm font-bold text-white">
-                                                    {sgUnlimited ? 'Ilimitado' : usage.serverBuilds.current}
-                                                </span>
-                                                <span className="text-xs text-zinc-500 font-medium ml-1">
-                                                    {sgUnlimited ? '∞/mês' : `/ ${usage.serverBuilds.limit} mensal`}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="w-full h-3 bg-black rounded-full overflow-hidden border border-white/5 relative z-10">
-                                            <div
-                                                className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.2)] ${sgUnlimited ? 'bg-gradient-to-r from-purple-500 via-cyan-400 to-emerald-400 bg-[length:200%_auto] animate-gradient' : sgPct >= 90 ? 'bg-gradient-to-r from-red-500 to-orange-500' : sgPct >= 60 ? 'bg-gradient-to-r from-amber-500 to-yellow-400' : 'bg-gradient-to-r from-blue-500 to-indigo-400'}`}
-                                                style={{ width: `${sgUnlimited ? 100 : sgPct}%` }}
-                                            />
-                                        </div>
-                                        <div className="relative z-10">
-                                            {sgUnlimited && (
-                                                <p className="text-[11px] font-medium text-purple-400 mt-2 flex items-center gap-1.5"><Sparkles className="w-3 h-3"/> Ilimitado no seu plano</p>
-                                            )}
-                                            {!sgUnlimited && sgPct >= 80 && (
-                                                <p className="text-[11px] font-medium text-amber-400 mt-2 flex items-center gap-1.5">⚠️ Aproximando-se do limite</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Feature Access Modular */}
-                                <div className="bg-zinc-950 p-6 rounded-2xl border border-white/5">
-                                    <h3 className="text-sm font-semibold text-zinc-300 mb-5 flex items-center gap-2">
-                                        <Zap className="w-4 h-4 text-amber-400" />
-                                        Módulos Desbloqueados
-                                    </h3>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                        {featureList.map((f) => (
-                                            <div key={f.label} className={`relative overflow-hidden flex items-center gap-3 p-4 rounded-xl transition-all duration-300 ${f.enabled ? 'bg-zinc-900 border border-emerald-500/30 hover:border-emerald-500/60 shadow-[0_4px_20px_-10px_rgba(16,185,129,0.3)] hover:-translate-y-1' : 'bg-zinc-900/40 border border-white/5 opacity-60 grayscale'}`}>
-                                                {f.enabled && <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl translate-x-8 -translate-y-8 pointer-events-none" />}
-                                                <div className={`p-2 rounded-lg shrink-0 ${f.enabled ? 'bg-emerald-500/10' : 'bg-black'}`}>
-                                                    {f.enabled
-                                                        ? <f.icon className="w-4 h-4 text-emerald-400" />
-                                                        : <Lock className="w-4 h-4 text-zinc-600" />
-                                                    }
-                                                </div>
-                                                <span className={`text-sm tracking-tight ${f.enabled ? 'text-white font-medium' : 'text-zinc-500 font-normal'}`}>{f.label}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    {/* AutoMod + Tickets inline */}
-                                    <div className="mt-3 flex flex-wrap gap-3">
-                                        <span className="text-xs text-zinc-500">
-                                            AutoMod: <span className={`font-medium ${usage.features.automod_level === 'ai' ? 'text-purple-400' : usage.features.automod_level === 'advanced' ? 'text-blue-400' : 'text-zinc-400'}`}>
-                                                {usage.features.automod_level === 'ai' ? 'IA Avançado' : usage.features.automod_level === 'advanced' ? 'Avançado' : 'Básico'}
-                                            </span>
-                                        </span>
-                                        <span className="text-xs text-zinc-500">
-                                            Categorias de Ticket: <span className="font-medium text-white">
-                                                {usage.features.ticket_categories === -1 ? 'Ilimitadas' : usage.features.ticket_categories}
-                                            </span>
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Upgrade CTA */}
-                                {showUpgrade && (
-                                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-purple-500/10 via-blue-500/5 to-transparent border border-purple-500/20">
-                                        <div className="flex items-center gap-3">
-                                            <Zap className="w-5 h-5 text-purple-400" />
-                                            <div>
-                                                <p className="text-sm font-medium text-white">Quer mais limites e recursos?</p>
-                                                <p className="text-xs text-zinc-400">Faça upgrade para o <span className="text-purple-400 font-bold">{nextPlan[currentPlan]}</span> e desbloqueie mais poder.</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleSubscribe(upgradePlanKey[currentPlan])}
-                                            disabled={loading !== null}
-                                            className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2 shrink-0"
-                                        >
-                                            {loading ? (
-                                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                            ) : (
-                                                <>
-                                                    <ArrowUpRight className="w-4 h-4" />
-                                                    Fazer Upgrade
-                                                </>
-                                            )}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
                     );
                 })()}
 
                 {/* ═══════════════════════════════════════════ */}
-                {/* 💰 PRICING CARDS                           */}
+                {/* 💰 CARDS DE PLANOS & PREÇOS                 */}
                 {/* ═══════════════════════════════════════════ */}
-
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Free Plan */}
-                    <div className={`relative bg-[#0A0A0C] border rounded-2xl p-6 flex flex-col transition-all ${!subscription ? 'border-emerald-500/50 ring-2 ring-emerald-500/20' : 'border-white/5 opacity-80 hover:opacity-100'}`}>
-                        {!subscription && (
-                            <div className="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-black text-[10px] font-bold uppercase tracking-wider rounded-full">
-                                Seu Plano
-                            </div>
-                        )}
-                        <div className="mb-6">
-                            <span className="text-sm font-bold uppercase tracking-widest text-emerald-400">{t("free.name")}</span>
-                            <h2 className="text-3xl font-serif text-white mt-2">Grátis<span className="text-sm text-zinc-600 font-sans ml-1">/sempre</span></h2>
-                        </div>
-
-                        <ul className="space-y-3 mb-8 flex-1">
-                            {[0, 1, 2, 3, 4].map((i) => (
-                                <li key={i} className="flex items-center gap-3 text-zinc-400 text-sm">
-                                    <Check className="w-4 h-4 text-emerald-500" />
-                                    <span>{tPricing(`free.features.${i}`)}</span>
-                                </li>
-                            ))}
-                        </ul>
-
-                        <button
-                            disabled
-                            className={`w-full py-3 border font-medium rounded-xl text-sm ${!subscription ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 cursor-default' : 'border-white/10 text-zinc-500 cursor-default'}`}
-                        >
-                            {!subscription ? 'Plano Atual' : 'Free'}
-                        </button>
+                <div className="space-y-4">
+                    <div className="text-center md:text-left">
+                        <h2 className="text-2xl font-bold text-white tracking-tight">Planos Disponíveis</h2>
+                        <p className="text-xs text-zinc-400 mt-0.5">Selecione o plano ideal para a sua comunidade com cobrança mensal ou anual.</p>
                     </div>
 
-                    {/* Starter Plan */}
-                    <div className={`relative bg-[#0A0A0C] border rounded-2xl p-6 flex flex-col transition-all ${subscription?.plan === 'starter' ? 'border-emerald-500/50 ring-2 ring-emerald-500/20' : planParam === 'starter' ? 'border-white/20 ring-2 ring-white/10' : 'border-white/5 opacity-80 hover:opacity-100'}`}>
-                        {subscription?.plan === 'starter' && (
-                            <div className="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-black text-[10px] font-bold uppercase tracking-wider rounded-full">
-                                Seu Plano
-                            </div>
-                        )}
-                        <div className="mb-6">
-                            <span className="text-sm font-bold uppercase tracking-widest text-zinc-500">{t("starter.name")}</span>
-                            <h2 className="text-3xl font-serif text-white mt-2">{billingCycle === 'monthly' ? t("starter.price") : tPricing("starter.price_yearly_total")}<span className="text-sm text-zinc-600 font-sans ml-1">{billingCycle === 'monthly' ? tPricing("monthly") : tPricing("yearly")}</span></h2>
-                            {billingCycle === 'yearly' && (
-                                <div className="flex flex-col mt-1">
-                                    <span className="text-[10px] text-zinc-500">{tPricing('billed_yearly', { price: tPricing('starter.price_yearly') })}</span>
-                                    <span className="text-[10px] text-green-400">{tPricing('save_text')}</span>
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+                        {/* 1. PLANO FREE */}
+                        <div className={`relative bg-[#0D0D11] border rounded-3xl p-6 flex flex-col justify-between transition-all ${
+                            currentPlanKey === 'free' ? 'border-emerald-500/50 shadow-lg shadow-emerald-950/20' : 'border-white/5 opacity-80 hover:opacity-100'
+                        }`}>
+                            {currentPlanKey === 'free' && (
+                                <div className="absolute -top-3 left-6 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full">
+                                    Seu Plano Atual
                                 </div>
                             )}
+
+                            <div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Free</span>
+                                <h3 className="text-3xl font-bold text-white mt-2">
+                                    R$ 0 <span className="text-xs text-zinc-500 font-normal">/sempre</span>
+                                </h3>
+                                <p className="text-xs text-zinc-400 mt-2">Ideal para começar e testar as automações básicas.</p>
+
+                                <ul className="space-y-3 mt-6 pt-6 border-t border-white/5 text-xs text-zinc-300">
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                        <span>5 mensagens IA/dia</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                        <span>1 Geração de Servidor</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                        <span>1 Categoria de Ticket</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                        <span>AutoMod Básico</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                        <span>Boas-vindas Padrão</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div className="pt-8">
+                                <button
+                                    disabled
+                                    className={`w-full py-3 font-bold rounded-2xl text-xs ${
+                                        currentPlanKey === 'free'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default'
+                                            : 'border border-white/10 text-zinc-500 cursor-default'
+                                    }`}
+                                >
+                                    {currentPlanKey === 'free' ? 'Plano Atual' : 'Incluído'}
+                                </button>
+                            </div>
                         </div>
 
-                        <ul className="space-y-3 mb-8 flex-1">
-                            {[0, 1, 2, 3, 4, 5].map((i) => (
-                                <li key={i} className="flex items-center gap-3 text-zinc-400 text-sm">
-                                    <Check className="w-4 h-4 text-zinc-600" />
-                                    <span>{tPricing(`starter.features.${i}`)}</span>
-                                </li>
-                            ))}
-                        </ul>
-
-                        <button
-                            onClick={() => handleSubscribe('starter')}
-                            disabled={loading !== null || subscription?.plan === 'starter'}
-                            className={`w-full py-3 border border-white/10 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm ${subscription?.plan === 'starter' ? 'bg-emerald-500/10 text-emerald-400 cursor-default' : 'hover:bg-white/5 text-white'}`}
-                        >
-                            {loading === 'starter' ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            ) : subscription?.plan === 'starter' ? (
-                                'Plano Atual'
-                            ) : (
-                                t("upgrade")
-                            )}
-                        </button>
-                    </div>
-
-                    {/* Pro Plan */}
-                    <div className={`relative bg-linear-to-b from-[#1a1c2e] to-[#0A0A0C] border rounded-2xl p-6 flex flex-col shadow-2xl shadow-purple-900/20 transform scale-105 z-10 ${subscription?.plan === 'pro' ? 'border-emerald-500/50 ring-2 ring-emerald-500/20' : planParam === 'pro' || !planParam ? 'border-purple-500/50 ring-2 ring-purple-500/20' : 'border-purple-500/30'}`}>
-                        {subscription?.plan === 'pro' ? (
-                            <div className="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-black text-[10px] font-bold uppercase tracking-wider rounded-full">
-                                Seu Plano
-                            </div>
-                        ) : (
-                            <div className="absolute top-0 right-0 p-4">
-                                <Zap className="w-5 h-5 text-purple-400 fill-purple-400" />
-                            </div>
-                        )}
-                        <div className="mb-6">
-                            <span className="text-sm font-bold uppercase tracking-widest text-purple-400">{t("pro.name")}</span>
-                            <h2 className="text-3xl font-serif text-white mt-2">{billingCycle === 'monthly' ? t("pro.price") : tPricing("pro.price_yearly_total")}<span className="text-sm text-zinc-500 font-sans ml-1">{billingCycle === 'monthly' ? tPricing("monthly") : tPricing("yearly")}</span></h2>
-                            {billingCycle === 'yearly' && (
-                                <div className="flex flex-col mt-1">
-                                    <span className="text-[10px] text-zinc-400">{tPricing('billed_yearly', { price: tPricing('pro.price_yearly') })}</span>
-                                    <span className="text-[10px] text-green-400">{tPricing('save_text')}</span>
+                        {/* 2. PLANO STARTER */}
+                        <div className={`relative bg-[#0D0D11] border rounded-3xl p-6 flex flex-col justify-between transition-all ${
+                            currentPlanKey === 'starter' ? 'border-emerald-500/50 shadow-lg shadow-emerald-950/20' : 'border-white/5 opacity-90 hover:opacity-100'
+                        }`}>
+                            {currentPlanKey === 'starter' && (
+                                <div className="absolute -top-3 left-6 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full">
+                                    Seu Plano Atual
                                 </div>
                             )}
-                        </div>
 
-                        <ul className="space-y-3 mb-8 flex-1">
-                            {[0, 1, 2, 3, 4, 5].map((i) => (
-                                <li key={i} className="flex items-center gap-3 text-zinc-300 text-sm">
-                                    <div className="w-4 h-4 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                        <Check className="w-3 h-3 text-purple-400" />
-                                    </div>
-                                    <span>{tPricing(`pro.features.${i}`)}</span>
-                                </li>
-                            ))}
-                        </ul>
+                            <div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">Starter</span>
+                                <h3 className="text-3xl font-bold text-white mt-2">
+                                    {billingCycle === 'monthly' ? 'R$ 19,90' : 'R$ 15,90'}
+                                    <span className="text-xs text-zinc-500 font-normal">/mês</span>
+                                </h3>
+                                {billingCycle === 'yearly' && (
+                                    <p className="text-[11px] text-emerald-400 mt-1">Cobrado R$ 190,80/ano (20% OFF)</p>
+                                )}
+                                <p className="text-xs text-zinc-400 mt-2">Para comunidades em crescimento que precisam de mais flexibilidade.</p>
 
-                        <button
-                            onClick={() => handleSubscribe('pro')}
-                            disabled={loading !== null || subscription?.plan === 'pro'}
-                            className={`w-full py-3 font-bold uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 text-sm ${subscription?.plan === 'pro' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default' : 'bg-white hover:bg-zinc-200 text-black shadow-white/10'}`}
-                        >
-                            {loading === 'pro' ? (
-                                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
-                            ) : subscription?.plan === 'pro' ? (
-                                'Plano Atual'
-                            ) : (
-                                t("upgrade")
-                            )}
-                        </button>
-                        <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-zinc-500">
-                            <ShieldCheck className="w-3 h-3" />
-                            {t("secure_payment")}
-                        </div>
-                    </div>
-
-                    {/* Ultimate Plan */}
-                    <div className={`relative bg-[#0A0A0C] border rounded-2xl p-6 flex flex-col transition-all ${subscription?.plan === 'ultimate' ? 'border-emerald-500/50 ring-2 ring-emerald-500/20' : planParam === 'ultimate' ? 'border-amber-500/50 ring-2 ring-amber-500/20' : 'border-white/5 hover:border-amber-500/30'}`}>
-                        {subscription?.plan === 'ultimate' && (
-                            <div className="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-black text-[10px] font-bold uppercase tracking-wider rounded-full">
-                                Seu Plano
+                                <ul className="space-y-3 mt-6 pt-6 border-t border-white/5 text-xs text-zinc-300">
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-zinc-400 shrink-0" />
+                                        <span>15 mensagens IA/dia</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-zinc-400 shrink-0" />
+                                        <span>5 Gerações de Servidor/mês</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-zinc-400 shrink-0" />
+                                        <span>3 Categorias de Ticket</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-zinc-400 shrink-0" />
+                                        <span>AutoMod Avançado</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-zinc-400 shrink-0" />
+                                        <span>Boas-vindas Personalizável</span>
+                                    </li>
+                                </ul>
                             </div>
-                        )}
-                        <div className="mb-6">
-                            <span className="text-sm font-bold uppercase tracking-widest text-amber-500">{t("ultimate.name")}</span>
-                            <h2 className="text-3xl font-serif text-white mt-2">{billingCycle === 'monthly' ? t("ultimate.price") : tPricing("ultimate.price_yearly_total")}<span className="text-sm text-zinc-600 font-sans ml-1">{billingCycle === 'monthly' ? tPricing("monthly") : tPricing("yearly")}</span></h2>
-                            {billingCycle === 'yearly' && (
-                                <div className="flex flex-col mt-1">
-                                    <span className="text-[10px] text-zinc-500">{tPricing('billed_yearly', { price: tPricing('ultimate.price_yearly') })}</span>
-                                    <span className="text-[10px] text-green-400">{tPricing('save_text')}</span>
+
+                            <div className="pt-8">
+                                <button
+                                    type="button"
+                                    onClick={() => handleSubscribe('starter')}
+                                    disabled={loading !== null || currentPlanKey === 'starter'}
+                                    className={`w-full py-3 font-bold rounded-2xl transition-all text-xs cursor-pointer ${
+                                        currentPlanKey === 'starter'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default'
+                                            : 'bg-white/5 hover:bg-white/10 text-white border border-white/10'
+                                    }`}
+                                >
+                                    {loading === 'starter' ? (
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                                    ) : currentPlanKey === 'starter' ? (
+                                        'Plano Atual'
+                                    ) : (
+                                        'Assinar Starter'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 3. PLANO PRO (MAIS POPULAR) */}
+                        <div className={`relative bg-linear-to-b from-[#1c142e] to-[#0D0D11] border-2 rounded-3xl p-6 flex flex-col justify-between shadow-2xl shadow-purple-950/40 z-10 ${
+                            currentPlanKey === 'pro' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-purple-500/60 ring-2 ring-purple-500/20'
+                        }`}>
+                            <div className="absolute -top-3 right-6 px-3 py-0.5 bg-gradient-to-r from-purple-500 to-indigo-500 text-white text-[10px] font-black uppercase tracking-wider rounded-full shadow-md">
+                                Mais Popular ⭐
+                            </div>
+
+                            {currentPlanKey === 'pro' && (
+                                <div className="absolute -top-3 left-6 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full">
+                                    Seu Plano Atual
                                 </div>
                             )}
+
+                            <div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-purple-400">Pro</span>
+                                <h3 className="text-3xl font-bold text-white mt-2">
+                                    {billingCycle === 'monthly' ? 'R$ 29,90' : 'R$ 23,90'}
+                                    <span className="text-xs text-zinc-500 font-normal">/mês</span>
+                                </h3>
+                                {billingCycle === 'yearly' && (
+                                    <p className="text-[11px] text-emerald-400 mt-1">Cobrado R$ 286,80/ano (20% OFF)</p>
+                                )}
+                                <p className="text-xs text-zinc-300 mt-2">Poder total para comunidades ativas com IA Ilimitada.</p>
+
+                                <ul className="space-y-3 mt-6 pt-6 border-t border-purple-500/20 text-xs text-zinc-200">
+                                    <li className="flex items-center gap-2.5">
+                                        <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="font-semibold text-white">IA Ilimitada</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span className="font-semibold text-white">Geração de Servidores Ilimitada</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span>Tickets Ilimitados + Transcrições</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span>AutoMod Inteligente com IA</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                        </div>
+                                        <span>Calls Privadas + Suporte Prioritário</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div className="pt-8">
+                                <button
+                                    type="button"
+                                    onClick={() => handleSubscribe('pro')}
+                                    disabled={loading !== null || currentPlanKey === 'pro'}
+                                    className={`w-full py-3.5 font-bold rounded-2xl transition-all text-xs cursor-pointer shadow-lg ${
+                                        currentPlanKey === 'pro'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default'
+                                            : 'bg-white hover:bg-zinc-200 text-black shadow-white/10'
+                                    }`}
+                                >
+                                    {loading === 'pro' ? (
+                                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin mx-auto" />
+                                    ) : currentPlanKey === 'pro' ? (
+                                        'Plano Atual'
+                                    ) : (
+                                        'Assinar Pro'
+                                    )}
+                                </button>
+                                <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-zinc-400">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Pagamento Seguro via Mercado Pago</span>
+                                </div>
+                            </div>
                         </div>
 
-                        <ul className="space-y-3 mb-8 flex-1">
-                            {[0, 1, 2, 3, 4].map((i) => (
-                                <li key={i} className="flex items-center gap-3 text-zinc-400 text-sm">
-                                    <div className="w-4 h-4 rounded-full bg-white/5 flex items-center justify-center">
-                                        <Check className="w-3 h-3 text-zinc-500" />
-                                    </div>
-                                    <span>{tPricing(`ultimate.features.${i}`)}</span>
-                                </li>
-                            ))}
-                        </ul>
-
-                        <button
-                            onClick={() => handleSubscribe('ultimate')}
-                            disabled={loading !== null || subscription?.plan === 'ultimate'}
-                            className={`w-full py-3 border font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm ${subscription?.plan === 'ultimate' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 cursor-default' : 'border-white/10 hover:border-amber-500/50 hover:bg-amber-500/10 hover:text-amber-500 text-white'}`}
-                        >
-                            {loading === 'ultimate' ? (
-                                <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                            ) : subscription?.plan === 'ultimate' ? (
-                                'Plano Atual'
-                            ) : (
-                                t("upgrade")
+                        {/* 4. PLANO ULTIMATE */}
+                        <div className={`relative bg-[#0D0D11] border rounded-3xl p-6 flex flex-col justify-between transition-all ${
+                            currentPlanKey === 'ultimate' ? 'border-emerald-500/50 shadow-lg shadow-emerald-950/20' : 'border-amber-500/30 hover:border-amber-500/60'
+                        }`}>
+                            {currentPlanKey === 'ultimate' && (
+                                <div className="absolute -top-3 left-6 px-3 py-0.5 bg-emerald-500 text-black text-[10px] font-black uppercase tracking-wider rounded-full">
+                                    Seu Plano Atual
+                                </div>
                             )}
-                        </button>
-                    </div>
 
+                            <div>
+                                <span className="text-xs font-bold uppercase tracking-widest text-amber-400">Ultimate</span>
+                                <h3 className="text-3xl font-bold text-white mt-2">
+                                    {billingCycle === 'monthly' ? 'R$ 49,90' : 'R$ 39,90'}
+                                    <span className="text-xs text-zinc-500 font-normal">/mês</span>
+                                </h3>
+                                {billingCycle === 'yearly' && (
+                                    <p className="text-[11px] text-emerald-400 mt-1">Cobrado R$ 478,80/ano (20% OFF)</p>
+                                )}
+                                <p className="text-xs text-zinc-400 mt-2">O pacote supremo com Whitelabel completo (seu bot, seu nome, seu avatar).</p>
+
+                                <ul className="space-y-3 mt-6 pt-6 border-t border-white/5 text-xs text-zinc-300">
+                                    <li className="flex items-center gap-2.5">
+                                        <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                                        <span className="font-semibold text-white">Whitelabel Total (Bot Próprio)</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                                        <span>Tudo incluído no plano Pro</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                                        <span>IA & Builds Ilimitados</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                                        <span>Suporte Dedicado 24/7</span>
+                                    </li>
+                                    <li className="flex items-center gap-2.5">
+                                        <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                                        <span>Acesso a recursos Beta em primeira mão</span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <div className="pt-8">
+                                <button
+                                    type="button"
+                                    onClick={() => handleSubscribe('ultimate')}
+                                    disabled={loading !== null || currentPlanKey === 'ultimate'}
+                                    className={`w-full py-3 font-bold rounded-2xl transition-all text-xs cursor-pointer ${
+                                        currentPlanKey === 'ultimate'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default'
+                                            : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    }`}
+                                >
+                                    {loading === 'ultimate' ? (
+                                        <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
+                                    ) : currentPlanKey === 'ultimate' ? (
+                                        'Plano Atual'
+                                    ) : (
+                                        'Assinar Ultimate'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
+
             </div>
         </div>
     );

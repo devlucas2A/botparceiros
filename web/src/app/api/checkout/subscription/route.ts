@@ -31,8 +31,22 @@ export async function POST(req: Request) {
         const price = isYearly ? selectedPlanConfig.price_yearly * 12 : selectedPlanConfig.price;
         const frequency = isYearly ? 12 : 1;
 
-        if (!session.user.email) {
-            return NextResponse.json({ error: "Email is required for payment" }, { status: 400 });
+        const payerEmail = session.user.email || `${session.user.id}@users.corebot.app`;
+
+        const mpToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+        // Modo Simulação/Dev se não houver Token configurado
+        if (!mpToken || mpToken.trim() === '') {
+            console.log(`[Subscription Sandbox] Simulating instant upgrade for plan: ${plan}`);
+            const mockSubId = `sub_sandbox_${Date.now()}`;
+            await database.createSubscription(
+                mockSubId,
+                session.user.id,
+                plan,
+                "authorized",
+                new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000)
+            );
+            return NextResponse.json({ url: `/dashboard/billing?success=true&plan=${plan}` });
         }
 
         const preapproval = new PreApproval(client);
@@ -40,14 +54,14 @@ export async function POST(req: Request) {
         // Mercado Pago exige HTTPS real. Em dev (localhost), usamos example.com para não quebrar a API.
         const baseUrl = process.env.NEXTAUTH_URL?.includes('localhost')
             ? 'https://example.com'
-            : process.env.NEXTAUTH_URL;
+            : (process.env.NEXTAUTH_URL || 'https://corebot.app');
 
-        const backUrl = `${baseUrl}/dashboard?success=true&plan=${plan}`;
+        const backUrl = `${baseUrl}/dashboard/billing?success=true&plan=${plan}`;
         console.log("Creating PreApproval for", selectedPlanConfig.title, "Back URL:", backUrl);
 
         const response = await preapproval.create({
             body: {
-                reason: `CoreBot ${selectedPlanConfig.title} Subscription`,
+                reason: `CoreBot ${selectedPlanConfig.title} Subscription (${isYearly ? 'Anual' : 'Mensal'})`,
                 auto_recurring: {
                     frequency: frequency,
                     frequency_type: "months",
@@ -55,13 +69,13 @@ export async function POST(req: Request) {
                     currency_id: "BRL"
                 },
                 back_url: backUrl,
-                payer_email: session.user.email,
+                payer_email: payerEmail,
                 external_reference: session.user.id,
                 status: "pending"
             }
         });
 
-        // 🎯 Gravar assinatura incial no banco de dados com status pending
+        // 🎯 Gravar assinatura inicial no banco de dados com status pending
         if (response.id) {
             await database.createSubscription(
                 response.id,
@@ -72,8 +86,10 @@ export async function POST(req: Request) {
         }
 
         return NextResponse.json({ url: response.init_point });
-    } catch (error) {
+    } catch (error: any) {
         console.error("MercadoPago Error:", error);
-        return NextResponse.json({ error: "Payment creation failed" }, { status: 500 });
+        return NextResponse.json({ 
+            error: error?.message || "Falha ao iniciar checkout no Mercado Pago" 
+        }, { status: 500 });
     }
 }

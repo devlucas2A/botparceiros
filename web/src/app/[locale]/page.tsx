@@ -2,12 +2,32 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Globe, Check, Bot, Shield, Zap, Server, Hand, Phone, Wand2, BarChart3 } from "lucide-react";
+import { 
+    ArrowRight, 
+    Globe, 
+    Check, 
+    Bot, 
+    Shield, 
+    Zap, 
+    Server, 
+    Hand, 
+    Phone, 
+    Wand2, 
+    BarChart3,
+    Sparkles,
+    CheckCircle2,
+    Lock,
+    FileText,
+    Crown,
+    Activity,
+    Radio
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { useTranslations, useLocale } from 'next-intl';
 import { useRouter, usePathname } from 'next/navigation';
+import { toast } from "sonner";
 
 export default function Home() {
     const t = useTranslations();
@@ -34,21 +54,25 @@ export default function Home() {
     };
 
     const handlePlanClick = (plan: string) => {
+        const targetUrl = `/${locale}/dashboard/billing?plan=${plan}&auto=true&interval=${billingCycle}`;
         if (session) {
-            router.push(`/dashboard/billing?plan=${plan}&auto=true&interval=${billingCycle}`);
+            router.push(targetUrl);
         } else {
-            signIn('discord', { callbackUrl: `/dashboard/billing?plan=${plan}&auto=true&interval=${billingCycle}` });
+            toast.info(`Redirecionando para login com Discord...`, {
+                description: `Você será encaminhado para assinar o plano ${plan.toUpperCase()} logo após o login.`
+            });
+            signIn('discord', { callbackUrl: targetUrl });
         }
     };
 
     const handleStartNow = () => {
+        const targetUrl = `/${locale}/dashboard`;
         if (session) {
-            router.push('/dashboard');
+            router.push(targetUrl);
         } else {
-            signIn('discord', { callbackUrl: '/dashboard' });
+            signIn('discord', { callbackUrl: targetUrl });
         }
     };
-
 
     return (
         <div className="min-h-screen bg-[#060609] text-white font-sans overflow-hidden selection:bg-purple-500/30 selection:text-white">
@@ -72,12 +96,12 @@ export default function Home() {
                 {/* Navbar */}
                 <nav className="fixed w-full z-50 bg-[#060609]/80 backdrop-blur-md border-b border-white/5 top-0 transition-all duration-300">
                     <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                        <Link href={`/${locale}`} className="flex items-center gap-3">
                             <div className="relative w-8 h-8">
                                 <Image src="/CoreBot.png" alt="CoreBot Logo" fill className="object-contain" />
                             </div>
-                            <span className="font-semibold tracking-tight text-sm">CoreBot&apos;s</span>
-                        </div>
+                            <span className="font-semibold tracking-tight text-sm text-white">CoreBot&apos;s</span>
+                        </Link>
 
                         <div className="hidden md:flex items-center gap-8 text-xs font-medium text-zinc-400">
                             <Link href="#features" className="hover:text-white transition-colors uppercase tracking-wide">{t('nav.features')}</Link>
@@ -89,18 +113,27 @@ export default function Home() {
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={toggleLanguage}
-                                className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white transition-colors uppercase tracking-wide"
+                                className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white transition-colors uppercase tracking-wide cursor-pointer"
                             >
                                 <Globe className="w-3 h-3" />
                                 {locale === 'pt' ? 'EN' : 'PT'}
                             </button>
 
-                            <button
-                                onClick={() => signIn('discord', { callbackUrl: '/dashboard' })}
-                                className="px-5 py-2 bg-white text-black text-xs font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors rounded-sm"
-                            >
-                                {t('nav.login')}
-                            </button>
+                            {session ? (
+                                <Link
+                                    href={`/${locale}/dashboard`}
+                                    className="px-5 py-2 bg-white text-black text-xs font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors rounded-sm shadow-md"
+                                >
+                                    Dashboard
+                                </Link>
+                            ) : (
+                                <button
+                                    onClick={handleStartNow}
+                                    className="px-5 py-2 bg-white text-black text-xs font-bold uppercase tracking-wider hover:bg-zinc-200 transition-colors rounded-sm cursor-pointer shadow-md"
+                                >
+                                    {t('nav.login')}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </nav>
@@ -130,17 +163,16 @@ export default function Home() {
                             <div className="flex flex-col sm:flex-row items-center gap-6">
                                 <button
                                     onClick={handleStartNow}
-                                    className="group w-full sm:w-64 h-14 bg-white hover:bg-zinc-200 text-black font-semibold flex items-center justify-between px-6 transition-all rounded-sm shadow-[0_0_30px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_40px_-5px_rgba(255,255,255,0.5)]"
+                                    className="group w-full sm:w-64 h-14 bg-white hover:bg-zinc-200 text-black font-semibold flex items-center justify-between px-6 transition-all rounded-sm shadow-[0_0_30px_-5px_rgba(255,255,255,0.3)] hover:shadow-[0_0_40px_-5px_rgba(255,255,255,0.5)] cursor-pointer"
                                 >
                                     {t('hero.cta')}
                                     <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                                 </button>
                             </div>
 
-
                         </div>
 
-                        {/* Visual Abstract side */}
+                        {/* Visual Abstract side - Animated Terminal */}
                         <div className="hidden lg:flex justify-center relative h-[500px]">
                             <div className="relative w-full h-full border border-white/5 bg-[#0e0e11] rounded-2xl overflow-hidden shadow-2xl shadow-indigo-500/10">
                                 {/* Terminal Header */}
@@ -159,7 +191,7 @@ export default function Home() {
                                     <motion.div
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: 1 }}
+                                        transition={{ delay: 0.5 }}
                                     >
                                         <span className="text-green-400">user@discord:~$</span> <span className="text-white">/construir-servidor</span>
                                     </motion.div>
@@ -168,33 +200,32 @@ export default function Home() {
                                     <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
-                                        transition={{ delay: 2 }}
+                                        transition={{ delay: 1 }}
                                         className="pl-4 border-l-2 border-white/10"
                                     >
-                                        <span className="text-purple-400">prompt:</span> <span className="text-zinc-300">"Comunidade de Gaming Setup com área VIP e cargos por nível"</span>
+                                        <span className="text-purple-400">prompt:</span> <span className="text-zinc-300">&quot;Comunidade de Gaming Setup com área VIP e cargos por nível&quot;</span>
                                     </motion.div>
 
                                     {/* Bot Response Processing */}
                                     <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
-                                        transition={{ delay: 4 }}
+                                        transition={{ delay: 1.5 }}
                                         className="text-blue-400 mt-4 flex items-center gap-2"
                                     >
                                         <span>🤖 CoreBot AI:</span>
                                         <span className="text-zinc-400">Analisando prompt...</span>
                                     </motion.div>
 
-
                                     {/* Bot Response Success */}
                                     <motion.div
                                         initial={{ opacity: 0, height: 0 }}
                                         animate={{ opacity: 1, height: 'auto' }}
-                                        transition={{ delay: 6 }}
+                                        transition={{ delay: 2.2 }}
                                         className="bg-white/5 p-3 rounded border border-white/5 text-zinc-300 mt-2"
                                     >
                                         <p className="text-green-400 font-bold mb-2">✅ Estrutura Gerada com Sucesso!</p>
-                                        <ul className="space-y-1 text-zinc-400 pl-4 list-disc">
+                                        <ul className="space-y-1 text-zinc-400 pl-4 list-disc text-xs">
                                             <li>5 Categorias Criadas (Boas-vindas, Geral, Gaming, VIP, Staff)</li>
                                             <li>12 Canais de Texto & Voz</li>
                                             <li>Cargos configurados: @Membro, @VIP, @Admin</li>
@@ -204,7 +235,7 @@ export default function Home() {
                                     <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
-                                        transition={{ delay: 9 }}
+                                        transition={{ delay: 2.8 }}
                                         className="text-zinc-500 mt-4 animate-pulse"
                                     >
                                         _ Aguardando confirmação...
@@ -215,9 +246,11 @@ export default function Home() {
                     </motion.div>
                 </main>
 
-                {/* Features Section - Modern Pro Style */}
-                <section id="features" className="py-32 border-t border-white/5 relative z-10 overflow-hidden">
-                    {/* Dot grid background — pontos sutis ate as bordas */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                {/* Features Section - Organizada em 2x2 Flagships + Barra de Módulos */}
+                {/* ═══════════════════════════════════════════════════════════════════ */}
+                <section id="features" className="py-28 border-t border-white/5 relative z-10 overflow-hidden">
+                    {/* Dot grid background */}
                     <div
                         className="absolute inset-0 pointer-events-none opacity-[0.18]"
                         style={{
@@ -228,7 +261,7 @@ export default function Home() {
                         }}
                     />
 
-                    {/* Aurora ambient — duas manchas de cor que pulsam lentamente */}
+                    {/* Aurora ambient */}
                     <motion.div
                         className="absolute top-[10%] left-[15%] w-[500px] h-[500px] bg-purple-500/15 blur-[120px] rounded-full pointer-events-none"
                         animate={{ x: [0, 60, 0], y: [0, -30, 0] }}
@@ -240,88 +273,136 @@ export default function Home() {
                         transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
                     />
 
-                    <div className="max-w-7xl mx-auto px-8 relative z-10">
+                    <div className="max-w-7xl mx-auto px-8 relative z-10 space-y-12">
                         <motion.div 
                             initial={{ opacity: 0, y: 30 }}
                             whileInView={{ opacity: 1, y: 0 }}
                             viewport={{ once: true }}
                             transition={{ duration: 0.8 }}
-                            className="mb-20 text-left"
+                            className="text-left max-w-2xl"
                         >
-                            <h2 className="text-5xl md:text-6xl font-serif text-white font-medium tracking-tight mb-6 leading-tight">
+                            <h2 className="text-4xl md:text-6xl font-serif text-white font-medium tracking-tight mb-4 leading-tight">
                                 {t('features.title')}<br />
                                 <span className="bg-clip-text text-transparent bg-linear-to-r from-zinc-400 to-zinc-600">{t('features.subtitle')}</span>
                             </h2>
-                            <p className="text-lg text-zinc-400 max-w-xl">
+                            <p className="text-base sm:text-lg text-zinc-400 leading-relaxed">
                                 {t('features.desc')}
                             </p>
                         </motion.div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[340px]">
+                        {/* GRID PRINCIPAL: 2x2 CARDS DE ALTO IMPACTO */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                            {/* Card 1: AI Builder (Large) */}
+                            {/* FLAGSHIP 1: Construtor IA de Servidores */}
                             <motion.div 
                                 initial={{ opacity: 0, y: 20 }}
                                 whileInView={{ opacity: 1, y: 0 }}
                                 viewport={{ once: true }}
-                                transition={{ duration: 0.5, delay: 0.1 }}
-                                className="md:col-span-2 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-purple-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-purple-500/10 flex flex-col justify-between"
+                                transition={{ duration: 0.5 }}
+                                className="bg-[#0A0A0C] border border-white/5 hover:border-purple-500/40 transition-all duration-500 rounded-[24px] p-8 relative overflow-hidden group shadow-lg hover:shadow-purple-500/10 flex flex-col justify-between"
                             >
-                                <div className="absolute inset-0 bg-linear-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                                <div className="absolute inset-0 bg-linear-to-br from-purple-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
                                 
-                                <div className="relative z-10 max-w-[300px] pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-purple-500/20 group-hover:border-purple-500/40 transition-all duration-500">
+                                <div className="space-y-4 relative z-10">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[14px] flex items-center justify-center group-hover:scale-105 group-hover:bg-purple-500/20 group-hover:border-purple-500/40 transition-all duration-500">
                                         <Bot className="text-zinc-300 group-hover:text-purple-400 w-6 h-6 transition-colors" />
                                     </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3 group-hover:text-purple-50 transition-colors">{t('features.items.ai_builder.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.ai_builder.desc')}</p>
+                                    <h3 className="text-2xl font-bold text-white group-hover:text-purple-50 transition-colors">
+                                        {t('features.items.ai_builder.title')}
+                                    </h3>
+                                    <p className="text-sm text-zinc-400 leading-relaxed">
+                                        {t('features.items.ai_builder.desc')}
+                                    </p>
                                 </div>
 
-                                <div className="absolute right-[32px] top-[32px] bottom-[32px] w-1/2 flex items-center justify-end">
-                                    <div className="w-full max-w-[340px] h-[180px] bg-[#050505] border border-white/10 rounded-[12px] flex items-center justify-center shadow-2xl relative translate-x-4 group-hover:translate-x-0 transition-transform duration-700 ease-out overflow-hidden">
-                                        <div className="absolute inset-0 bg-linear-to-tr from-white/5 to-transparent opacity-50"></div>
-                                        
-                                        <div className="absolute top-0 left-0 right-0 h-10 flex items-center px-4 gap-2 border-b border-white/5 bg-white/[0.02]">
-                                            <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
-                                            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
-                                            <div className="w-2.5 h-2.5 rounded-full bg-green-500/80"></div>
+                                <div className="mt-8 pt-4 border-t border-white/5 relative z-10 flex items-center justify-between">
+                                    <div className="bg-[#050505] border border-white/10 rounded-[12px] px-4 py-2.5 flex items-center gap-3 w-full">
+                                        <div className="flex gap-1.5 shrink-0">
+                                            <div className="w-2 h-2 rounded-full bg-red-500/80"></div>
+                                            <div className="w-2 h-2 rounded-full bg-yellow-500/80"></div>
+                                            <div className="w-2 h-2 rounded-full bg-green-500/80"></div>
                                         </div>
-                                        
                                         <motion.span 
                                             animate={{ opacity: [1, 0.5, 1] }}
                                             transition={{ duration: 2, repeat: Infinity }}
-                                            className="font-mono text-[13px] text-purple-400 mt-6 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+                                            className="font-mono text-xs text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)] truncate"
                                         >
-                                            Generating server...<span className="animate-pulse">_</span>
+                                            Generating server structure...<span className="animate-pulse">_</span>
                                         </motion.span>
                                     </div>
                                 </div>
                             </motion.div>
 
-                            {/* Card 2: AutoMod (Tall) */}
+                            {/* FLAGSHIP 2: CoreBot AI & Base de Conhecimento (RAG) */}
+                            <motion.div 
+                                initial={{ opacity: 0, y: 20 }}
+                                whileInView={{ opacity: 1, y: 0 }}
+                                viewport={{ once: true }}
+                                transition={{ duration: 0.5, delay: 0.1 }}
+                                className="bg-[#0A0A0C] border border-white/5 hover:border-indigo-500/40 transition-all duration-500 rounded-[24px] p-8 relative overflow-hidden group shadow-lg hover:shadow-indigo-500/10 flex flex-col justify-between"
+                            >
+                                <div className="absolute inset-0 bg-linear-to-br from-indigo-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+
+                                <div className="space-y-4 relative z-10">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[14px] flex items-center justify-center group-hover:scale-105 group-hover:bg-indigo-500/20 group-hover:border-indigo-500/40 transition-all duration-500">
+                                        <Sparkles className="text-zinc-300 group-hover:text-indigo-400 w-6 h-6 transition-colors" />
+                                    </div>
+                                    <h3 className="text-2xl font-bold text-white group-hover:text-indigo-50 transition-colors">
+                                        CoreBot AI & Conhecimento (RAG)
+                                    </h3>
+                                    <p className="text-sm text-zinc-400 leading-relaxed">
+                                        Alimente a IA com FAQs, regras e tabelas de preços da sua comunidade para respostas cirúrgicas 24/7 com Llama 3.3 70B.
+                                    </p>
+                                </div>
+
+                                <div className="mt-8 pt-4 border-t border-white/5 relative z-10 flex items-center justify-between">
+                                    <div className="bg-[#050505] border border-white/10 rounded-[12px] px-4 py-2.5 flex items-center justify-between gap-3 w-full">
+                                        <span className="text-xs text-zinc-300 font-mono flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                            Contexto Personalizado
+                                        </span>
+                                        <span className="text-[10px] uppercase font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                                            Llama 3.3
+                                        </span>
+                                    </div>
+                                </div>
+                            </motion.div>
+
+                            {/* FLAGSHIP 3: AutoMod & Anti-Raid 24/7 */}
                             <motion.div 
                                 initial={{ opacity: 0, y: 20 }}
                                 whileInView={{ opacity: 1, y: 0 }}
                                 viewport={{ once: true }}
                                 transition={{ duration: 0.5, delay: 0.2 }}
-                                className="md:col-span-1 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-red-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-red-500/10"
+                                className="bg-[#0A0A0C] border border-white/5 hover:border-red-500/40 transition-all duration-500 rounded-[24px] p-8 relative overflow-hidden group shadow-lg hover:shadow-red-500/10 flex flex-col justify-between"
                             >
-                                <div className="absolute inset-0 bg-linear-to-br from-red-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                                <div className="absolute inset-0 bg-linear-to-br from-red-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
-                                <div className="relative z-10 w-full pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-red-500/20 group-hover:border-red-500/40 transition-all duration-500">
+                                <div className="space-y-4 relative z-10">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[14px] flex items-center justify-center group-hover:scale-105 group-hover:bg-red-500/20 group-hover:border-red-500/40 transition-all duration-500">
                                         <Shield className="text-zinc-300 group-hover:text-red-400 w-6 h-6 transition-colors" />
                                     </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.automod.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.automod.desc')}</p>
+                                    <h3 className="text-2xl font-bold text-white group-hover:text-red-50 transition-colors">
+                                        {t('features.items.automod.title')} & Anti-Raid
+                                    </h3>
+                                    <p className="text-sm text-zinc-400 leading-relaxed">
+                                        Filtro ativo contra contas recém-criadas, invasões em massa, spam, links maliciosos e menções excessivas com punição imediata.
+                                    </p>
                                 </div>
 
-                                <div className="absolute bottom-[-10%] right-[-10%] opacity-20 group-hover:opacity-60 transition-all duration-700 pointer-events-none">
-                                    <Shield className="w-56 h-56 text-red-500 blur-lg group-hover:blur-xl transition-all duration-700" strokeWidth={0.5} style={{ fill: 'none' }} />
-                                    <Shield className="w-56 h-56 text-red-400 absolute inset-0" strokeWidth={1} style={{ fill: 'none' }} />
+                                <div className="mt-8 pt-4 border-t border-white/5 relative z-10">
+                                    <div className="bg-[#050505] border border-white/10 rounded-[12px] px-4 py-2.5 flex items-center justify-between w-full">
+                                        <span className="text-xs text-zinc-300 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse"></span>
+                                            Proteção Anti-Raid 24/7
+                                        </span>
+                                        <span className="text-[10px] font-bold uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                            Ativo
+                                        </span>
+                                    </div>
                                 </div>
-                                
-                                {/* Scan line animation on hover */}
+
+                                {/* Laser Scan Line */}
                                 <motion.div 
                                     className="absolute left-0 right-0 h-[1px] bg-linear-to-r from-transparent via-red-500/80 to-transparent opacity-0 group-hover:opacity-100 drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]"
                                     animate={{ top: ["10%", "90%", "10%"] }}
@@ -329,234 +410,100 @@ export default function Home() {
                                 />
                             </motion.div>
 
-                            {/* Card 3: Tickets (Normal) */}
+                            {/* FLAGSHIP 4: Tickets 2.0 & Transcrições HTML */}
                             <motion.div 
                                 initial={{ opacity: 0, y: 20 }}
                                 whileInView={{ opacity: 1, y: 0 }}
                                 viewport={{ once: true }}
                                 transition={{ duration: 0.5, delay: 0.3 }}
-                                className="md:col-span-1 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-blue-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-blue-500/10 flex flex-col justify-between"
+                                className="bg-[#0A0A0C] border border-white/5 hover:border-blue-500/40 transition-all duration-500 rounded-[24px] p-8 relative overflow-hidden group shadow-lg hover:shadow-blue-500/10 flex flex-col justify-between"
                             >
-                                <div className="absolute inset-0 bg-linear-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                                <div className="absolute inset-0 bg-linear-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
 
-                                <div className="relative z-10 w-full pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-blue-500/20 group-hover:border-blue-500/40 transition-all duration-500">
-                                        <Zap className="text-zinc-300 group-hover:text-blue-400 w-6 h-6 transition-colors" />
+                                <div className="space-y-4 relative z-10">
+                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[14px] flex items-center justify-center group-hover:scale-105 group-hover:bg-blue-500/20 group-hover:border-blue-500/40 transition-all duration-500">
+                                        <FileText className="text-zinc-300 group-hover:text-blue-400 w-6 h-6 transition-colors" />
                                     </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.tickets.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.tickets.desc')}</p>
-                                </div>
-                                
-                                <div className="absolute bottom-8 left-8 right-8">
-                                    <motion.div 
-                                        whileHover={{ y: -6 }}
-                                        className="bg-[#141416] border border-white/10 rounded-[14px] p-3 flex  items-center gap-4 shadow-2xl backdrop-blur-md relative"
-                                    >
-                                       <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">#</div>
-                                       <div className="flex-1 h-2 rounded-full bg-zinc-800"></div>
-                                       <motion.div 
-                                           animate={{ scale: [1, 1.3, 1] }} 
-                                           transition={{ duration: 2, repeat: Infinity }}
-                                           className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.6)]"
-                                       ></motion.div>
-                                    </motion.div>
-                                </div>
-                            </motion.div>
-
-                            {/* Card 4: Dashboard (Wide) */}
-                            <motion.div 
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ duration: 0.5, delay: 0.4 }}
-                                className="md:col-span-2 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-emerald-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-emerald-500/10"
-                            >
-                                <div className="absolute inset-0 bg-linear-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-
-                                <div className="relative z-10 max-w-[300px] pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-emerald-500/20 group-hover:border-emerald-500/40 transition-all duration-500">
-                                        <Server className="text-zinc-300 group-hover:text-emerald-400 w-6 h-6 transition-colors" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.dashboard.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.dashboard.desc')}</p>
-                                </div>
-                                
-                                <div className="absolute right-[32px] top-[32px] bottom-[32px] w-1/2 flex items-center justify-end">
-                                     <div className="w-full max-w-[340px] h-full bg-[#050505] border border-white/10 rounded-[12px] p-5 flex flex-col justify-between shadow-2xl relative translate-y-4 group-hover:translate-y-0 transition-transform duration-700 ease-out">
-                                         <div className="absolute inset-0 bg-linear-to-b from-white/5 to-transparent opacity-20 pointer-events-none rounded-xl"></div>
-                                         
-                                         <div className="flex justify-between items-center relative z-10">
-                                            <div className="h-2 w-16 bg-zinc-800 rounded-full"></div>
-                                            <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] uppercase font-bold px-2 py-1 rounded-[6px] flex items-center gap-1.5">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                                ONLINE
-                                            </div>
-                                         </div>
-                                         <div className="h-[75px] bg-[#111] rounded-lg border border-white/5 p-3 flex items-end justify-between gap-1.5 relative z-10">
-                                            {[40, 70, 50, 90, 60, 30, 80, 45, 60, 100].map((h, i) => (
-                                                <motion.div 
-                                                    key={i} 
-                                                    initial={{ height: '30%' }}
-                                                    whileInView={{ height: `${h}%` }}
-                                                    transition={{ duration: 1, delay: i * 0.1, type: "spring" }}
-                                                    className="w-full bg-emerald-500/30 group-hover:bg-emerald-400/80 rounded-t-sm transition-colors duration-500" 
-                                                ></motion.div>
-                                            ))}
-                                         </div>
-                                         <div className="h-8 bg-[#111] border border-white/5 rounded-lg relative z-10 flex items-center px-4">
-                                            <div className="w-1/2 h-1.5 bg-zinc-800 rounded-full"></div>
-                                         </div>
-                                     </div>
-                                </div>
-                            </motion.div>
-
-                            {/* Card 5: Boas-vindas */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ duration: 0.5, delay: 0.5 }}
-                                className="md:col-span-1 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-cyan-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-cyan-500/10 flex flex-col justify-between"
-                            >
-                                <div className="absolute inset-0 bg-linear-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-
-                                <div className="relative z-10 pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-cyan-500/20 group-hover:border-cyan-500/40 transition-all duration-500">
-                                        <Hand className="text-zinc-300 group-hover:text-cyan-400 w-6 h-6 transition-colors" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.welcome.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.welcome.desc')}</p>
+                                    <h3 className="text-2xl font-bold text-white group-hover:text-blue-50 transition-colors">
+                                        Tickets 2.0 & Transcrições HTML
+                                    </h3>
+                                    <p className="text-sm text-zinc-400 leading-relaxed">
+                                        Atendimento por categorias com assunção de tickets pela staff e geração automática de transcrições visuais em HTML com resumo inteligente.
+                                    </p>
                                 </div>
 
-                                {/* Mini avatar + ring */}
-                                <div className="absolute bottom-6 right-6 w-16 h-16 rounded-full border-2 border-cyan-500/30 group-hover:border-cyan-400/60 transition-all duration-700 flex items-center justify-center group-hover:scale-110">
-                                    <div className="w-10 h-10 rounded-full bg-linear-to-br from-cyan-500/40 to-blue-500/40"></div>
-                                </div>
-                            </motion.div>
-
-                            {/* Card 6: Comandos Custom (Wide) */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ duration: 0.5, delay: 0.6 }}
-                                className="md:col-span-2 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-amber-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-amber-500/10 flex flex-col justify-between"
-                            >
-                                <div className="absolute inset-0 bg-linear-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-
-                                <div className="relative z-10 max-w-[300px] pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-amber-500/20 group-hover:border-amber-500/40 transition-all duration-500">
-                                        <Wand2 className="text-zinc-300 group-hover:text-amber-400 w-6 h-6 transition-colors" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.custom.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.custom.desc')}</p>
-                                </div>
-
-                                {/* Slash command mockup */}
-                                <div className="absolute right-[32px] top-[32px] bottom-[32px] w-1/2 flex items-center justify-end">
-                                    <div className="w-full max-w-[340px] bg-[#050505] border border-white/10 rounded-[12px] p-4 shadow-2xl relative translate-x-4 group-hover:translate-x-0 transition-transform duration-700 ease-out space-y-2">
-                                        <div className="flex items-center gap-2 text-[11px] font-mono">
-                                            <span className="text-amber-400">/</span>
-                                            <span className="text-zinc-200">enviar-mensagem</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-mono pl-3 text-zinc-500">
-                                            <span className="text-amber-300/60">canal:</span>
-                                            <span className="px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-amber-200">#geral</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] font-mono pl-3 text-zinc-500">
-                                            <span className="text-amber-300/60">mensagem:</span>
-                                            <span className="text-zinc-300 truncate">"Olá pessoal!"</span>
-                                        </div>
-                                        <motion.div
-                                            animate={{ opacity: [0.4, 1, 0.4] }}
-                                            transition={{ duration: 2, repeat: Infinity }}
-                                            className="text-[10px] text-amber-300 pt-1 font-mono"
-                                        >
-                                            ✓ gerado por IA
-                                        </motion.div>
+                                <div className="mt-8 pt-4 border-t border-white/5 relative z-10">
+                                    <div className="bg-[#050505] border border-white/10 rounded-[12px] px-4 py-2.5 flex items-center justify-between w-full">
+                                        <span className="text-xs text-zinc-300 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                            Transcrições Visuais em HTML
+                                        </span>
+                                        <span className="text-[10px] font-bold uppercase text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                                            Resumo IA
+                                        </span>
                                     </div>
                                 </div>
                             </motion.div>
 
-                            {/* Card 7: Calls Privadas */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ duration: 0.5, delay: 0.7 }}
-                                className="md:col-span-1 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-fuchsia-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-fuchsia-500/10 flex flex-col justify-between"
-                            >
-                                <div className="absolute inset-0 bg-linear-to-br from-fuchsia-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-
-                                <div className="relative z-10 pt-2">
-                                    <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-fuchsia-500/20 group-hover:border-fuchsia-500/40 transition-all duration-500">
-                                        <Phone className="text-zinc-300 group-hover:text-fuchsia-400 w-6 h-6 transition-colors" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.calls.title')}</h3>
-                                    <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.calls.desc')}</p>
-                                </div>
-
-                                {/* 3 ondas de audio pulsando */}
-                                <div className="absolute bottom-6 right-6 flex items-end gap-1.5 h-12">
-                                    {[0.4, 0.8, 0.5, 1, 0.6, 0.3].map((h, i) => (
-                                        <motion.div
-                                            key={i}
-                                            animate={{ scaleY: [h, h * 1.4, h] }}
-                                            transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.15 }}
-                                            className="w-1 origin-bottom bg-fuchsia-500/40 group-hover:bg-fuchsia-400/80 rounded-full transition-colors"
-                                            style={{ height: `${h * 100}%` }}
-                                        />
-                                    ))}
-                                </div>
-                            </motion.div>
-
-                            {/* Card 8: Analytics (Wide, last row) */}
-                            <motion.div
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ duration: 0.5, delay: 0.8 }}
-                                className="md:col-span-3 row-span-1 bg-[#0A0A0C] border border-white/5 hover:border-violet-500/30 transition-all duration-500 rounded-[20px] p-8 relative overflow-hidden group shadow-lg hover:shadow-violet-500/10"
-                            >
-                                <div className="absolute inset-0 bg-linear-to-br from-violet-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-
-                                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 h-full">
-                                    <div className="max-w-md">
-                                        <div className="w-12 h-12 bg-white/5 border border-white/10 rounded-[12px] flex items-center justify-center mb-6 group-hover:bg-violet-500/20 group-hover:border-violet-500/40 transition-all duration-500">
-                                            <BarChart3 className="text-zinc-300 group-hover:text-violet-400 w-6 h-6 transition-colors" />
-                                        </div>
-                                        <h3 className="text-xl font-semibold text-white mb-3">{t('features.items.analytics.title')}</h3>
-                                        <p className="text-[15px] text-zinc-400 leading-relaxed">{t('features.items.analytics.desc')}</p>
-                                    </div>
-
-                                    {/* Metricas placeholder */}
-                                    <div className="grid grid-cols-3 gap-4 w-full md:w-auto md:min-w-[400px]">
-                                        {[
-                                            { label: 'Membros', value: '1.2k', delta: '+12%' },
-                                            { label: 'Mensagens', value: '8.4k', delta: '+34%' },
-                                            { label: 'Tickets', value: '142', delta: '+5%' },
-                                        ].map((m, i) => (
-                                            <motion.div
-                                                key={m.label}
-                                                initial={{ opacity: 0, y: 10 }}
-                                                whileInView={{ opacity: 1, y: 0 }}
-                                                transition={{ duration: 0.5, delay: 0.9 + i * 0.1 }}
-                                                viewport={{ once: true }}
-                                                className="bg-[#050505] border border-white/10 rounded-[10px] p-4 group-hover:border-violet-500/20 transition-colors"
-                                            >
-                                                <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1">{m.label}</div>
-                                                <div className="text-2xl font-mono text-white">{m.value}</div>
-                                                <div className="text-[11px] text-emerald-400 mt-1">{m.delta}</div>
-                                            </motion.div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </motion.div>
                         </div>
+
+                        {/* BARRA DE MÓDULOS COMPLEMENTARES (Clean & Compact) */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ duration: 0.6, delay: 0.4 }}
+                            className="bg-[#0A0A0C] border border-white/5 rounded-[24px] p-6 sm:p-8 relative overflow-hidden shadow-xl"
+                        >
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                                
+                                <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+                                        <Hand className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-white">Boas-Vindas Canvas</h4>
+                                        <p className="text-xs text-zinc-400 mt-1">Banners automáticos gerados com o avatar do membro.</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 flex items-center justify-center text-fuchsia-400 shrink-0 mt-0.5">
+                                        <Phone className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-white">Calls Privadas</h4>
+                                        <p className="text-xs text-zinc-400 mt-1">Salas de voz temporárias que somem ao esvaziar.</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                                        <Activity className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-white">Live Activity Feed</h4>
+                                        <p className="text-xs text-zinc-400 mt-1">Auditoria ao vivo de todas as ações e pings do bot.</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                                        <Crown className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-white">Whitelabel Total</h4>
+                                        <p className="text-xs text-zinc-400 mt-1">Bot com seu próprio nome e foto no Discord.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </motion.div>
+
                     </div>
                 </section>
 
-                {/* Pricing Section - Premium Glass Style */}
+                {/* Pricing Section */}
                 <section id="pricing" className="py-32 border-t border-white/5 relative z-10">
                     <div className="max-w-7xl mx-auto px-8">
                         <div className="text-center mb-20">
@@ -568,13 +515,13 @@ export default function Home() {
                             <div className="flex items-center gap-1 p-1 bg-white/5 rounded-full border border-white/5 relative">
                                 <button
                                     onClick={() => setBillingCycle('monthly')}
-                                    className={`relative z-10 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${billingCycle === 'monthly' ? 'text-black' : 'text-zinc-400 hover:text-white'}`}
+                                    className={`relative z-10 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 cursor-pointer ${billingCycle === 'monthly' ? 'text-black' : 'text-zinc-400 hover:text-white'}`}
                                 >
                                     {t('pricing.monthly')}
                                 </button>
                                 <button
                                     onClick={() => setBillingCycle('yearly')}
-                                    className={`relative z-10 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${billingCycle === 'yearly' ? 'text-black' : 'text-zinc-400 hover:text-white'}`}
+                                    className={`relative z-10 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 cursor-pointer ${billingCycle === 'yearly' ? 'text-black' : 'text-zinc-400 hover:text-white'}`}
                                 >
                                     {t('pricing.yearly')}
                                 </button>
@@ -593,9 +540,9 @@ export default function Home() {
                                     <h3 className="text-lg font-medium text-emerald-400 mb-4">{t('pricing.free.name')}</h3>
                                     <div className="flex items-baseline gap-1">
                                         <span className="text-4xl font-serif text-white">{t('pricing.free.price')}</span>
-                                        <span className="text-sm text-zinc-600">/sempre</span>
+                                        <span className="text-sm text-zinc-500">/sempre</span>
                                     </div>
-                                    <p className="text-sm text-zinc-500 mt-4">{t('pricing.free.desc')}</p>
+                                    <p className="text-xs text-zinc-400 mt-2">{t('pricing.free.desc')}</p>
                                 </div>
 
                                 <div className="h-px w-full bg-white/5 mb-8"></div>
@@ -612,7 +559,7 @@ export default function Home() {
                                 </ul>
                                 <button
                                     onClick={handleStartNow}
-                                    className="w-full py-4 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/10 transition-colors"
+                                    className="w-full py-4 rounded-xl border border-emerald-500/30 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/10 transition-colors cursor-pointer"
                                 >
                                    Comece Agora
                                 </button>
@@ -623,13 +570,18 @@ export default function Home() {
                                 <div className="mb-8">
                                     <h3 className="text-lg font-medium text-zinc-400 mb-4">{t('pricing.starter.name')}</h3>
                                     <div className="flex items-baseline gap-1">
-                                        <span className="text-4xl font-serif text-white">{billingCycle === 'monthly' ? t('pricing.starter.price') : t('pricing.starter.price_yearly_total')}</span>
-                                        <span className="text-sm text-zinc-600">{billingCycle === 'monthly' ? t('pricing.monthly') : t('pricing.yearly')}</span>
+                                        <span className="text-4xl font-serif text-white">
+                                            {billingCycle === 'monthly' ? t('pricing.starter.price') : t('pricing.starter.price_yearly')}
+                                        </span>
+                                        <span className="text-sm text-zinc-500">/mês</span>
                                     </div>
-                                    {billingCycle === 'yearly' && (
-                                        <p className="text-[10px] text-zinc-500 mt-1">{t('pricing.billed_yearly', { price: t('pricing.starter.price_yearly') })}</p>
+                                    {billingCycle === 'yearly' ? (
+                                        <p className="text-[11px] text-emerald-400 font-medium mt-1.5">
+                                            Cobrado anualmente ({t('pricing.starter.price_yearly_total')}/ano) • -20%
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-zinc-500 mt-2">{t('pricing.starter.desc')}</p>
                                     )}
-                                    <p className="text-sm text-zinc-500 mt-4">{t('pricing.starter.desc')}</p>
                                 </div>
 
                                 <div className="h-px w-full bg-white/5 mb-8"></div>
@@ -646,7 +598,7 @@ export default function Home() {
                                 </ul>
                                 <button
                                     onClick={() => handlePlanClick('starter')}
-                                    className="w-full py-4 rounded-xl border border-white/10 text-white text-sm font-semibold hover:bg-white/5 transition-colors"
+                                    className="w-full py-4 rounded-xl border border-white/10 text-white text-sm font-semibold hover:bg-white/5 transition-colors cursor-pointer"
                                 >
                                     Assinar Starter
                                 </button>
@@ -654,25 +606,31 @@ export default function Home() {
 
                             {/* Pro Plan (Popular) */}
                             <div className="p-8 rounded-3xl border border-purple-500/30 bg-[#0A0A0C] relative group overflow-hidden transform lg:-translate-y-4">
-                                {/* Glow Effect */}
                                 <div className="absolute inset-0 bg-linear-to-b from-purple-500/10 to-transparent opacity-50 pointer-events-none"></div>
 
                                 <div className="relative z-10">
-                                    <div className="flex justify-between items-start mb-8">
-                                        <div>
-                                            <h3 className="text-lg font-medium text-purple-400 mb-4 flex items-center gap-2">
+                                    <div className="mb-8">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-lg font-medium text-purple-400 flex items-center gap-2">
                                                 {t('pricing.pro.name')}
-                                                <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold uppercase tracking-wider">Popular</span>
                                             </h3>
-                                            <div className="flex items-baseline gap-1">
-                                                <span className="text-4xl font-serif text-white">{billingCycle === 'monthly' ? t('pricing.pro.price') : t('pricing.pro.price_yearly_total')}</span>
-                                                <span className="text-sm text-zinc-600">{billingCycle === 'monthly' ? t('pricing.monthly') : t('pricing.yearly')}</span>
-                                            </div>
-                                            {billingCycle === 'yearly' && (
-                                                <p className="text-[10px] text-zinc-400 mt-1">{t('pricing.billed_yearly', { price: t('pricing.pro.price_yearly') })}</p>
-                                            )}
-                                            <p className="text-sm text-zinc-500 mt-4">{t('pricing.pro.desc')}</p>
+                                            <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[10px] font-bold uppercase tracking-wider border border-purple-500/30">
+                                                Popular ⭐
+                                            </span>
                                         </div>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-4xl font-serif text-white">
+                                                {billingCycle === 'monthly' ? t('pricing.pro.price') : t('pricing.pro.price_yearly')}
+                                            </span>
+                                            <span className="text-sm text-zinc-500">/mês</span>
+                                        </div>
+                                        {billingCycle === 'yearly' ? (
+                                            <p className="text-[11px] text-emerald-400 font-medium mt-1.5">
+                                                Cobrado anualmente ({t('pricing.pro.price_yearly_total')}/ano) • -20%
+                                            </p>
+                                        ) : (
+                                            <p className="text-xs text-zinc-400 mt-2">{t('pricing.pro.desc')}</p>
+                                        )}
                                     </div>
 
                                     <div className="h-px w-full bg-purple-500/20 mb-8"></div>
@@ -689,7 +647,7 @@ export default function Home() {
                                     </ul>
                                     <button
                                         onClick={() => handlePlanClick('pro')}
-                                        className="w-full py-4 rounded-xl bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)]"
+                                        className="w-full py-4 rounded-xl bg-white text-black text-sm font-bold hover:bg-zinc-200 transition-colors shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)] cursor-pointer"
                                     >
                                         Assinar Pro
                                     </button>
@@ -701,13 +659,18 @@ export default function Home() {
                                 <div className="mb-8">
                                     <h3 className="text-lg font-medium text-amber-500 mb-4">{t('pricing.ultimate.name')}</h3>
                                     <div className="flex items-baseline gap-1">
-                                        <span className="text-4xl font-serif text-white">{billingCycle === 'monthly' ? t('pricing.ultimate.price') : t('pricing.ultimate.price_yearly_total')}</span>
-                                        <span className="text-sm text-zinc-600">{billingCycle === 'monthly' ? t('pricing.monthly') : t('pricing.yearly')}</span>
+                                        <span className="text-4xl font-serif text-white">
+                                            {billingCycle === 'monthly' ? t('pricing.ultimate.price') : t('pricing.ultimate.price_yearly')}
+                                        </span>
+                                        <span className="text-sm text-zinc-500">/mês</span>
                                     </div>
-                                    {billingCycle === 'yearly' && (
-                                        <p className="text-[10px] text-zinc-500 mt-1">{t('pricing.billed_yearly', { price: t('pricing.ultimate.price_yearly') })}</p>
+                                    {billingCycle === 'yearly' ? (
+                                        <p className="text-[11px] text-emerald-400 font-medium mt-1.5">
+                                            Cobrado anualmente ({t('pricing.ultimate.price_yearly_total')}/ano) • -20%
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-zinc-500 mt-2">{t('pricing.ultimate.desc')}</p>
                                     )}
-                                    <p className="text-sm text-zinc-500 mt-4">{t('pricing.ultimate.desc')}</p>
                                 </div>
 
                                 <div className="h-px w-full bg-white/5 mb-8"></div>
@@ -724,7 +687,7 @@ export default function Home() {
                                 </ul>
                                 <button
                                     onClick={() => handlePlanClick('ultimate')}
-                                    className="w-full py-4 rounded-xl border border-white/10 text-white text-sm font-semibold hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/50 transition-all"
+                                    className="w-full py-4 rounded-xl border border-white/10 text-white text-sm font-semibold hover:bg-amber-500/10 hover:text-amber-500 hover:border-amber-500/50 transition-all cursor-pointer"
                                 >
                                     Assinar Ultimate
                                 </button>
@@ -754,7 +717,7 @@ export default function Home() {
                 </section>
 
                 <footer className="py-12 border-t border-white/5 bg-black text-center text-zinc-600 text-xs uppercase tracking-widest">
-                    <p>&copy; 2026 CoreBot&apos;s AI. All rights served.</p>
+                    <p>&copy; 2026 CoreBot&apos;s AI. All rights reserved.</p>
                 </footer>
             </div>
         </div>
