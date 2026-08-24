@@ -1,5 +1,5 @@
 import { Client, GuildMember, TextChannel, AttachmentBuilder, PermissionFlagsBits } from 'discord.js';
-import { getGuildConfig, logger } from '../../shared/services';
+import { getGuildConfig, logger, logAudit } from '../../shared/services';
 import { generateBanner, generateBannerFast } from './welcome.service';
 import { trackEvent } from '../../shared/services/analytics.service';
 
@@ -28,6 +28,7 @@ export function setupWelcomeEvents(client: Client) {
 
         const guildId = member.guild.id;
         trackEvent(guildId, 'member_join').catch(() => {});
+        logAudit(guildId, member.id, 'MEMBER_JOINED', undefined, { username: member.user.username, tag: member.user.tag }).catch(() => {});
 
         try {
             const config = await getGuildConfig(guildId);
@@ -113,6 +114,7 @@ export function setupWelcomeEvents(client: Client) {
 
         const guildId = guildMember.guild.id;
         trackEvent(guildId, 'member_leave').catch(() => {});
+        logAudit(guildId, guildMember.id, 'MEMBER_LEFT', undefined, { username: guildMember.user?.username, tag }).catch(() => {});
 
         try {
             const config = await getGuildConfig(guildId);

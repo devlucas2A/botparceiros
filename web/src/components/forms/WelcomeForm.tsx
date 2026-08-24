@@ -13,6 +13,7 @@ import { Hand, ShieldAlert, Type, UserPlus, LogOut, ShieldCheck, Image as ImageI
 import { useEffect, useState, useRef } from "react";
 import { ChannelSelect } from "@/components/discord/ChannelSelect";
 import { RoleSelect } from "@/components/discord/RoleSelect";
+import { toast } from "sonner";
 
 interface AutoModConfig {
     guild_id: string;
@@ -85,6 +86,18 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
     // Dropdown state
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (state?.success && state.message) {
+            toast.success("Boas-Vindas Atualizadas!", {
+                description: state.message,
+            });
+        } else if (state?.error) {
+            toast.error("Erro ao salvar", {
+                description: state.error,
+            });
+        }
+    }, [state]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -358,16 +371,6 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
 
             <div className="pt-2 pb-8">
                 <SubmitButton />
-                {state?.message && (
-                    <div className="mt-4 p-4 bg-green-500/10 border border-green-500/20 text-green-400 rounded-xl text-center font-medium animate-in fade-in slide-in-from-bottom-2 shadow-lg shadow-green-900/10">
-                        {state.message}
-                    </div>
-                )}
-                {state?.error && (
-                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-xl text-center font-medium animate-in fade-in slide-in-from-bottom-2 shadow-lg shadow-red-900/10">
-                        {state.error}
-                    </div>
-                )}
             </div>
         </form>
     );

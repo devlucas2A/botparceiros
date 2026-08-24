@@ -1,4 +1,4 @@
-import { getTicketCategories, getGuildConfig } from "@shared/services/database";
+import { getTicketCategories, getGuildConfig, getTicketTranscripts } from "@shared/services/database";
 import { getUserPlan } from "@shared/services/plan-features";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth-service";
@@ -19,10 +19,11 @@ export default async function TicketDashboardPage({ params }: PageProps) {
     }
 
     // Fetch data in parallel
-    const [categories, guildConfig, userPlan] = await Promise.all([
+    const [categories, guildConfig, userPlan, transcripts] = await Promise.all([
         getTicketCategories(guildId),
         getGuildConfig(guildId),
-        getUserPlan(user.id)
+        getUserPlan(user.id),
+        getTicketTranscripts(guildId, 50)
     ]);
 
     return (
@@ -32,6 +33,7 @@ export default async function TicketDashboardPage({ params }: PageProps) {
             userPlan={userPlan}
             categories={categories}
             guildConfig={guildConfig || {}}
+            transcripts={transcripts || []}
         />
     );
 }

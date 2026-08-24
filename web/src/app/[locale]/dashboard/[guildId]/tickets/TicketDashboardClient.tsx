@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { TicketForm } from "@/components/forms/TicketForm";
 import { TicketConfigForm } from "@/components/forms/TicketConfigForm";
+import { TicketTranscriptsList } from "@/components/forms/TicketTranscriptsList";
 import { Button } from "@/components/ui/button";
-import { Ticket, LayoutTemplate } from "lucide-react";
+import { Ticket, LayoutTemplate, FileText } from "lucide-react";
 
 interface TicketDashboardClientProps {
     guildId: string;
@@ -21,43 +22,61 @@ interface TicketDashboardClientProps {
         ticket_logs_channel_id?: string | null;
     };
     userPlan: any;
+    transcripts?: any[];
 }
 
-export function TicketDashboardClient({ guildId, userId, categories, guildConfig, userPlan }: TicketDashboardClientProps) {
-    const [activeTab, setActiveTab] = useState<'categories' | 'panel'>('categories');
+export function TicketDashboardClient({
+    guildId,
+    userId,
+    categories,
+    guildConfig,
+    userPlan,
+    transcripts = []
+}: TicketDashboardClientProps) {
+    const [activeTab, setActiveTab] = useState<'categories' | 'panel' | 'transcripts'>('categories');
 
     return (
         <div className="space-y-6">
-            <div className="flex gap-2 p-1 bg-zinc-900/50 rounded-lg w-fit border border-zinc-800">
+            <div className="flex gap-2 p-1 bg-zinc-900/50 rounded-xl w-fit border border-zinc-800">
                 <Button
                     variant={activeTab === 'categories' ? 'secondary' : 'ghost'}
                     size="sm"
                     onClick={() => setActiveTab('categories')}
-                    className="gap-2"
+                    className="gap-2 text-xs font-semibold cursor-pointer"
                 >
-                    <Ticket className="w-4 h-4" />
+                    <Ticket className="w-4 h-4 text-violet-400" />
                     Categorias
                 </Button>
                 <Button
                     variant={activeTab === 'panel' ? 'secondary' : 'ghost'}
                     size="sm"
                     onClick={() => setActiveTab('panel')}
-                    className="gap-2"
+                    className="gap-2 text-xs font-semibold cursor-pointer"
                 >
-                    <LayoutTemplate className="w-4 h-4" />
+                    <LayoutTemplate className="w-4 h-4 text-blue-400" />
                     Personalizar Painel
+                </Button>
+                <Button
+                    variant={activeTab === 'transcripts' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setActiveTab('transcripts')}
+                    className="gap-2 text-xs font-semibold cursor-pointer"
+                >
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    Transcrições ({transcripts.length})
                 </Button>
             </div>
 
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {activeTab === 'categories' ? (
+                {activeTab === 'categories' && (
                     <TicketForm
                         guildId={guildId}
                         userId={userId}
                         categories={categories}
                         userPlan={userPlan}
                     />
-                ) : (
+                )}
+                {activeTab === 'panel' && (
                     <TicketConfigForm
                         guildId={guildId}
                         userPlan={userPlan}
@@ -71,6 +90,12 @@ export function TicketDashboardClient({ guildId, userId, categories, guildConfig
                             footer: guildConfig.ticket_panel_footer,
                             logsChannelId: guildConfig.ticket_logs_channel_id
                         }}
+                    />
+                )}
+                {activeTab === 'transcripts' && (
+                    <TicketTranscriptsList
+                        transcripts={transcripts}
+                        guildId={guildId}
                     />
                 )}
             </div>

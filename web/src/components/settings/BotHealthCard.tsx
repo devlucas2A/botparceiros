@@ -73,17 +73,17 @@ export function BotHealthCard({ botStatus, guildId }: Props) {
             accent="emerald"
         >
             {/* Status do processo */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="bg-[#13111C] border border-white/5 rounded-xl p-4 col-span-1 md:col-span-2">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+                <div className="bg-black/40 border border-white/5 rounded-2xl p-5 col-span-1 md:col-span-2 flex flex-col justify-between">
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Processo</span>
-                        <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border ${badge.color}`}>
+                        <span className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full border ${badge.color}`}>
                             {badge.label}
                         </span>
                     </div>
-                    <div className="text-sm text-zinc-300">
+                    <div className="text-sm font-medium text-zinc-200">
                         {status === "ok" && details ? (
-                            <>Discord conectado • {details.guilds_count} servidores • ping {details.ws_ping_ms}ms</>
+                            <>Discord Conectado • {details.guilds_count} Servidores • Ping {details.ws_ping_ms}ms</>
                         ) : status === "down" ? (
                             "Processo do bot não está respondendo."
                         ) : status === "stale" ? (
@@ -94,20 +94,20 @@ export function BotHealthCard({ botStatus, guildId }: Props) {
                     </div>
                 </div>
 
-                <div className="bg-[#13111C] border border-white/5 rounded-xl p-4">
+                <div className="bg-black/40 border border-white/5 rounded-2xl p-5 flex flex-col justify-between">
                     <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">Uptime</div>
-                    <div className="text-lg font-mono text-white">
+                    <div className="text-xl font-mono font-bold text-white">
                         {details ? formatUptime(details.uptime_seconds) : "—"}
                     </div>
                 </div>
 
-                <div className="bg-[#13111C] border border-white/5 rounded-xl p-4">
+                <div className="bg-black/40 border border-white/5 rounded-2xl p-5 flex flex-col justify-between">
                     <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">No servidor?</div>
-                    <div className="text-lg font-medium">
+                    <div className="text-lg font-bold">
                         {botStatus.inGuild ? (
-                            <span className="text-emerald-400 flex items-center gap-2"><CheckCircle className="w-4 h-4" /> Sim</span>
+                            <span className="text-emerald-400 flex items-center gap-2"><CheckCircle className="w-5 h-5" /> Sim</span>
                         ) : (
-                            <span className="text-red-400 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Não</span>
+                            <span className="text-red-400 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Não</span>
                         )}
                     </div>
                 </div>

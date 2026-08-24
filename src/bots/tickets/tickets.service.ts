@@ -304,7 +304,7 @@ export async function handleTicketClaim(
 }
 
 /**
- * Gera o transcript e fecha o ticket.
+ * Gera o transcript visual em HTML com IA e fecha o ticket.
  */
 export async function closeTicketProcess(
     channel: TextChannel,
@@ -315,43 +315,79 @@ export async function closeTicketProcess(
     const messages = await channel.messages.fetch({ limit: 100 });
     const sortedMessages = [...messages.values()].reverse();
 
-    let transcript = `TRANSCRIPT DO TICKET\n`;
-    transcript += `Canal: ${channel.name}\n`;
-    transcript += `Fechado por: ${closedBy.user.tag}\n`;
-    transcript += `Categoria: ${categoryName}\n`;
-    transcript += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
-    transcript += `------------------------------------------------\n\n`;
+    // 1. Resumo Inteligente por IA (se disponível)
+    let aiSummary: string | null = null;
+    try {
+        const { llmService } = await import('../../shared/services/llm.service');
+        if (llmService && llmService.isReady() && sortedMessages.length >= 2) {
+            const conversationText = sortedMessages
+                .map(m => `${m.author.username}: ${m.content || '[Anexo/Mídia]'}`)
+                .join('\n')
+                .slice(0, 3000);
 
-    for (const msg of sortedMessages) {
-        const time = msg.createdAt.toLocaleString('pt-BR');
-        const author = msg.author.tag;
-        const content = msg.content || '[Conteúdo não textual]';
-        const attachments = msg.attachments.size > 0 ? ` [${msg.attachments.size} anexo(s)]` : '';
-        transcript += `[${time}] ${author}: ${content}${attachments}\n`;
+            aiSummary = await llmService.generateResponse(
+                [{ role: 'user', content: conversationText }],
+                "Você é um assistente de suporte. Resuma este chamado de suporte em 3 tópicos curtos: 📌 Motivo, ✅ Solução/Andamento e ⭐ Sentimento do cliente."
+            );
+        }
+    } catch (err) {
+        logger.warn('Não foi possível gerar resumo de IA do ticket', { error: err });
     }
 
-    const guildConfig = await getGuildConfig(guild.id);
+    // 2. Gerar Transcript Visual em HTML
+    const { generateHtmlTranscript } = await import('../../shared/services/transcript-generator');
+    const { saveTicketTranscript } = await import('../../shared/services/database');
 
-    // Prioridade: Canal de Logs de Ticket > Canal de Logs Geral
+    const transcriptId = `tr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const transcriptHtml = generateHtmlTranscript({
+        guild,
+        channelName: channel.name,
+        closedBy,
+        category: categoryName,
+        summary: aiSummary,
+        messages: sortedMessages
+    });
+
+    // 3. Salvar no Banco de Dados
+    await saveTicketTranscript({
+        id: transcriptId,
+        guild_id: guild.id,
+        ticket_channel_id: channel.id,
+        ticket_name: channel.name,
+        user_id: getTicketOwnerIdFromTopic(channel) || closedBy.id,
+        closed_by_id: closedBy.id,
+        category: categoryName,
+        summary: aiSummary,
+        transcript_html: transcriptHtml,
+        message_count: sortedMessages.length
+    }).catch(err => logger.error('Erro ao salvar transcript no banco', { error: err }));
+
+    // 4. Enviar para Canal de Logs no Discord
+    const guildConfig = await getGuildConfig(guild.id);
     const logChannelId = guildConfig?.ticket_logs_channel_id || guildConfig?.logs_channel_id;
 
     if (logChannelId) {
         const logsChannel = guild.channels.cache.get(logChannelId) as TextChannel;
         if (logsChannel) {
             try {
-                const buffer = Buffer.from(transcript, 'utf8');
-                const attachment = new AttachmentBuilder(buffer, { name: `transcript-${channel.name}.txt` });
+                const buffer = Buffer.from(transcriptHtml, 'utf8');
+                const attachment = new AttachmentBuilder(buffer, { name: `transcript-${channel.name}.html` });
 
                 const logEmbed = new EmbedBuilder()
                     .setColor(THEME.colors.info)
-                    .setTitle(`${THEME.emojis.log} Ticket Fechado`)
+                    .setTitle(`${THEME.emojis.log} Ticket Fechado & Transcrição Gerada`)
                     .addFields(
                         { name: 'Ticket', value: channel.name, inline: true },
                         { name: 'Fechado por', value: `${closedBy.user} (${closedBy.user.tag})`, inline: true },
                         { name: 'Categoria', value: categoryName, inline: true },
-                        { name: 'Dono do Ticket', value: `<@${getTicketOwnerIdFromTopic(channel) || 'Desconhecido'}>`, inline: true }
+                        { name: 'Total de Mensagens', value: `${sortedMessages.length}`, inline: true },
+                        { name: 'ID do Transcript', value: `\`${transcriptId}\``, inline: true }
                     )
                     .setTimestamp();
+
+                if (aiSummary) {
+                    logEmbed.addFields({ name: '🤖 Resumo por IA', value: aiSummary.slice(0, 1024), inline: false });
+                }
 
                 await logsChannel.send({ embeds: [logEmbed], files: [attachment] });
             } catch (error) {
@@ -361,7 +397,7 @@ export async function closeTicketProcess(
     }
 
     await closeDbTicket(channel.id);
-    await logAudit(guild.id, closedBy.id, 'TICKET_CLOSED', channel.id, { category: categoryName });
+    await logAudit(guild.id, closedBy.id, 'TICKET_CLOSED', channel.id, { category: categoryName, transcript_id: transcriptId });
     trackEvent(guild.id, 'ticket_close').catch(() => {});
 
     setTimeout(() => {

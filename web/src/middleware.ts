@@ -1,5 +1,72 @@
-import middleware from "./middleware/index";
-export default middleware;
+import { withAuth } from "next-auth/middleware";
+import createMiddleware from 'next-intl/middleware';
+import { NextRequest, NextResponse } from "next/server";
+
+const intlMiddleware = createMiddleware({
+    locales: ['en', 'pt'],
+    defaultLocale: 'pt'
+});
+
+const authMiddleware = withAuth(
+    function onSuccess(req) {
+        return intlMiddleware(req as unknown as NextRequest);
+    },
+    {
+        callbacks: {
+            authorized: ({ token }) => token != null
+        },
+        pages: {
+            signIn: '/'
+        }
+    }
+);
+
+export default async function middleware(req: NextRequest) {
+    const publicPathnameRegex = /^\/(?:en|pt)?(?:\/)?$/;
+    const isPublicPage = publicPathnameRegex.test(req.nextUrl.pathname);
+
+    let response: NextResponse;
+
+    if (isPublicPage) {
+        response = intlMiddleware(req);
+    } else {
+        response = (authMiddleware as any)(req);
+    }
+
+    // A Railway injeta o host com a porta 8080 internamente.
+    // Isso faz com que redirects (301/302) gerados venham com a porta 8080 ou como localhost em prod.
+    // Essa correção intercepta o redirect e ajusta a URL apenas quando necessário.
+    if (response && response.status >= 300 && response.status < 400) {
+        let location = response.headers.get('location');
+        if (location) {
+            const prodUrl = process.env.NEXTAUTH_URL;
+            const isLocalhost = location.includes('localhost') || location.includes('127.0.0.1');
+            const hasPort = location.includes(':8080');
+
+            // Corrige apenas em produção se o redirect tentar ir para localhost ou tiver a porta :8080
+            if (prodUrl && !prodUrl.includes('localhost') && (isLocalhost || hasPort)) {
+                try {
+                    const parsedLocation = new URL(location);
+                    const parsedProdUrl = new URL(prodUrl);
+                    
+                    parsedLocation.protocol = parsedProdUrl.protocol;
+                    parsedLocation.host = parsedProdUrl.host;
+                    parsedLocation.port = parsedProdUrl.port;
+                    
+                    response.headers.set('location', parsedLocation.toString());
+                } catch (e) {
+                    if (hasPort) {
+                        response.headers.set('location', location.replace(':8080', ''));
+                    }
+                }
+            } else if (hasPort) {
+                response.headers.set('location', location.replace(':8080', ''));
+            }
+        }
+    }
+
+    return response;
+}
 
 export const config = {
     matcher: ['/((?!api|_next|_vercel|.*\\..*).*)']

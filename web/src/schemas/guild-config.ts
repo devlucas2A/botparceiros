@@ -38,7 +38,13 @@ export const AutoModActionSchema = z.object({
     automodAction: z.enum(['delete', 'timeout', 'kick', 'ban']).default('delete'),
     automodTimeoutDuration: z.coerce.number().min(0).default(0),
     automodLogChannel: z.string().optional().nullable(),
-    automodBypassRoles: JSONStringArray
+    automodBypassRoles: JSONStringArray,
+    automodLinkWhitelist: JSONStringArray,
+    automodIgnoredChannels: JSONStringArray,
+    automodMaxMentions: z.coerce.number().min(0).default(0),
+    antiraidEnabled: CheckboxToBoolean,
+    antiraidMinAccountAgeDays: z.coerce.number().min(0).default(0),
+    antiraidAction: z.enum(['kick', 'ban', 'quarantine']).default('kick')
 });
 
 export const TicketCategorySchema = z.object({

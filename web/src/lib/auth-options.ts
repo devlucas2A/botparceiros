@@ -1,9 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import DiscordProvider from "next-auth/providers/discord";
 
-/** URL base de produção (sem porta) */
-const PROD_URL = process.env.NEXTAUTH_URL || '';
-
 export const authOptions: NextAuthOptions = {
     providers: [
         DiscordProvider({
@@ -14,23 +11,37 @@ export const authOptions: NextAuthOptions = {
     ],
     callbacks: {
         async redirect({ url, baseUrl }) {
-            // Railway roda internamente em porta 8080, mas externamente é HTTPS/443.
-            // Remove qualquer porta da URL para evitar redirect para :8080
-            const cleanBase = PROD_URL || baseUrl.replace(/:\d+$/, '');
-
-            // URL relativa → combinar com base limpa
+            // Se for URL relativa (/dashboard, etc), combina diretamente com baseUrl
             if (url.startsWith("/")) {
-                return `${cleanBase}${url}`;
+                return `${baseUrl}${url}`;
             }
 
-            // URL absoluta do mesmo domínio → limpar porta
             try {
-                const parsed = new URL(url);
-                parsed.port = '';
-                return parsed.toString();
+                const parsedUrl = new URL(url);
+                const parsedBase = new URL(baseUrl);
+
+                // Se a URL já aponta para a mesma origem completa (protocolo + host + porta)
+                if (parsedUrl.origin === parsedBase.origin) {
+                    return url;
+                }
+
+                // Se for o mesmo hostname (ex: localhost), assegura protocolo e porta corretos
+                if (parsedUrl.hostname === parsedBase.hostname) {
+                    parsedUrl.port = parsedBase.port;
+                    parsedUrl.protocol = parsedBase.protocol;
+                    return parsedUrl.toString();
+                }
+
+                // Railway: remove apenas porta 8080 interna se tiver vazado em produção
+                if (parsedUrl.port === '8080') {
+                    parsedUrl.port = '';
+                    return parsedUrl.toString();
+                }
             } catch {
-                return cleanBase;
+                return baseUrl;
             }
+
+            return baseUrl;
         },
         async jwt({ token, account }: any) {
             if (account) {

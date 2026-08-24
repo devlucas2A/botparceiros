@@ -99,22 +99,22 @@ export function PreferencesCard({
                         onChange={setNotifyChannel}
                         placeholder="Selecione um canal (opcional)..."
                     />
-                    <p className="text-[10px] text-zinc-500">
-                        Onde o bot manda avisos importantes (atualizações, problemas). Deixe vazio para desabilitar.
+                    <p className="text-[11px] text-zinc-500">
+                        Canal onde o bot enviará avisos importantes de status e atualizações. Deixe vazio para desabilitar.
                     </p>
                 </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-2">
                 <Button
                     onClick={handleSave}
                     disabled={saving}
-                    className="bg-violet-500 hover:bg-violet-600 text-white"
+                    className="rounded-xl px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-lg shadow-purple-900/20 cursor-pointer"
                 >
                     {saving ? (
                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...</>
                     ) : (
-                        <><Save className="w-4 h-4 mr-2" /> Salvar</>
+                        <><Save className="w-4 h-4 mr-2" /> Salvar Preferências</>
                     )}
                 </Button>
             </div>

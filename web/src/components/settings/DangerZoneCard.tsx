@@ -97,61 +97,61 @@ export function DangerZoneCard({ guildId, botInGuild }: Props) {
                 iconColor="text-red-400"
                 accent="red"
             >
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                     {/* Export */}
-                    <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-[#13111C] border border-white/5">
+                    <div className="flex items-center justify-between gap-4 p-5 rounded-2xl bg-black/40 border border-white/5">
                         <div className="flex-1 min-w-0">
-                            <h3 className="text-sm font-medium text-white">Exportar configurações</h3>
-                            <p className="text-xs text-zinc-500 mt-0.5">
-                                Baixa um JSON com toda a configuração do servidor para backup.
+                            <h3 className="text-sm font-semibold text-white">Exportar Configurações (Backup)</h3>
+                            <p className="text-xs text-zinc-400 mt-0.5">
+                                Baixa um arquivo JSON completo com todas as configurações do servidor para cópia de segurança.
                             </p>
                         </div>
                         <Button
                             variant="outline"
                             onClick={handleExport}
                             disabled={loading === "export"}
-                            className="border-white/10 hover:bg-white/5 text-white shrink-0"
+                            className="rounded-xl border-white/10 bg-white/5 hover:bg-white/10 text-white text-xs font-semibold shrink-0 cursor-pointer"
                         >
                             {loading === "export" ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                                <><Download className="w-4 h-4 mr-2" /> Exportar</>
+                                <><Download className="w-4 h-4 mr-1.5" /> Exportar JSON</>
                             )}
                         </Button>
                     </div>
 
                     {/* Reset */}
-                    <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-red-500/5 border border-red-500/20">
+                    <div className="flex items-center justify-between gap-4 p-5 rounded-2xl bg-rose-500/5 border border-rose-500/20">
                         <div className="flex-1 min-w-0">
-                            <h3 className="text-sm font-medium text-red-200">Resetar configurações</h3>
-                            <p className="text-xs text-red-300/60 mt-0.5">
-                                Zera todos os módulos. Categorias de ticket são mantidas.
+                            <h3 className="text-sm font-semibold text-rose-200">Redefinir Todas as Configurações</h3>
+                            <p className="text-xs text-rose-300/70 mt-0.5">
+                                Zera todos os módulos para os valores padrão de fábrica. Categorias de tickets são preservadas.
                             </p>
                         </div>
                         <Button
                             onClick={() => setDialog("reset")}
                             disabled={loading === "reset"}
-                            className="bg-red-500/20 hover:bg-red-500/30 text-red-200 border border-red-500/30 shrink-0"
+                            className="rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 text-xs font-semibold shrink-0 cursor-pointer"
                         >
-                            <RotateCcw className="w-4 h-4 mr-2" /> Resetar
+                            <RotateCcw className="w-4 h-4 mr-1.5" /> Redefinir
                         </Button>
                     </div>
 
                     {/* Leave guild */}
                     {botInGuild && (
-                        <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+                        <div className="flex items-center justify-between gap-4 p-5 rounded-2xl bg-rose-500/10 border border-rose-500/30">
                             <div className="flex-1 min-w-0">
-                                <h3 className="text-sm font-medium text-red-200">Remover bot do servidor</h3>
-                                <p className="text-xs text-red-300/60 mt-0.5">
-                                    O bot sai imediatamente. Configurações ficam salvas para se ele voltar.
+                                <h3 className="text-sm font-semibold text-rose-200">Desconectar Bot do Servidor</h3>
+                                <p className="text-xs text-rose-300/70 mt-0.5">
+                                    O bot sairá imediatamente do servidor Discord. Os dados continuam salvos caso deseje adicioná-lo de volta.
                                 </p>
                             </div>
                             <Button
                                 onClick={() => setDialog("leave")}
                                 disabled={loading === "leave"}
-                                className="bg-red-600 hover:bg-red-700 text-white shrink-0"
+                                className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shrink-0 shadow-lg shadow-rose-900/30 cursor-pointer"
                             >
-                                <LogOut className="w-4 h-4 mr-2" /> Remover
+                                <LogOut className="w-4 h-4 mr-1.5" /> Remover Bot
                             </Button>
                         </div>
                     )}

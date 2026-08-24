@@ -11,6 +11,7 @@ import { Settings, Save, LayoutTemplate, Lock } from "lucide-react";
 import { useState } from "react";
 import { Check, X } from "lucide-react";
 import { ChannelSelect } from "@/components/discord/ChannelSelect";
+import { DiscordEmbedPreview } from "@/components/discord/DiscordEmbedPreview";
 
 interface TicketConfigFormProps {
     guildId: string;
@@ -47,10 +48,10 @@ function SubmitButton() {
 }
 
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export function TicketConfigForm({ guildId, initialConfig, userPlan }: TicketConfigFormProps) {
     const router = useRouter();
-    const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const isPremium = userPlan !== 'free';
 
     // State for Real-time Preview
@@ -82,8 +83,6 @@ export function TicketConfigForm({ guildId, initialConfig, userPlan }: TicketCon
     };
 
     async function handleSubmit(formData: FormData) {
-        setFeedback(null);
-
         // Append file if exists
         if (bannerFile) {
             formData.set('bannerFile', bannerFile);
@@ -92,24 +91,18 @@ export function TicketConfigForm({ guildId, initialConfig, userPlan }: TicketCon
         const res = await updateTicketConfigAction({} as any, formData);
 
         if (res.success) {
-            setFeedback({ type: 'success', message: res.message || "Configuração salva!" });
-            setTimeout(() => setFeedback(null), 3000);
+            toast.success("Painel de Tickets Salvo!", {
+                description: res.message || "As configurações do painel foram atualizadas com sucesso.",
+            });
         } else {
-            setFeedback({ type: 'error', message: res.error || "Erro ao salvar." });
+            toast.error("Erro ao salvar", {
+                description: res.error || "Não foi possível salvar o painel.",
+            });
         }
     }
 
     return (
         <form action={handleSubmit} className="space-y-6 relative font-hind">
-            {/* Feedback Toast */}
-            {feedback && (
-                <div className={`fixed bottom-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium animate-in slide-in-from-bottom-5 fade-in duration-300 ${feedback.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-                    }`}>
-                    {feedback.type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                    {feedback.message}
-                </div>
-            )}
-
             <input type="hidden" name="guildId" value={guildId} />
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -311,76 +304,25 @@ export function TicketConfigForm({ guildId, initialConfig, userPlan }: TicketCon
                     <div className="sticky top-6">
                         <Label className="text-zinc-400 text-xs uppercase font-bold tracking-wider mb-3 block">Pré-visualização em Tempo Real</Label>
 
-                        <div className="bg-[#313338] rounded-lg p-4 border border-zinc-700/50 shadow-2xl">
-                            <div className="flex gap-3">
-                                <div className="w-10 h-10 rounded-full bg-violet-600 shrink-0 flex items-center justify-center text-white font-bold text-sm">Bot</div>
-                                <div className="flex-1 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-white font-medium text-sm">CoreBot Tickets</span>
-                                        <span className="bg-[#5865F2] text-white text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1">
-                                            <Check className="w-2 h-2" /> BOT
-                                        </span>
-                                    </div>
+                        <DiscordEmbedPreview
+                            botName="CoreBot Tickets"
+                            title={config.title || "🌌 Central de Tickets - CoreBot"}
+                            description={config.description || "Bem-vindo ao Sistema de Tickets!\n\nSelecione uma categoria abaixo para abrir um atendimento exclusivo com nossa equipe."}
+                            color={config.color || "#5865F2"}
+                            bannerUrl={config.bannerUrl || null}
+                            footerText={config.footer || "CoreBot • Atendimento Seguro"}
+                            buttonText={config.buttonText || "Abrir Ticket"}
+                            buttonEmoji={config.buttonEmoji || "🎫"}
+                            buttonStyle="primary"
+                        />
 
-                                    {/* Embed Preview */}
-                                    <div className="bg-[#2B2D31] rounded flex max-w-sm overflow-hidden border-l-4" style={{ borderLeftColor: config.color }}>
-                                        <div className="p-4 space-y-3 w-full">
-                                            <div className="space-y-2">
-                                                <h4 className="text-white font-bold text-sm leading-snug">
-                                                    {config.title || "🌌 Central de Tickets - CoreBot"}
-                                                </h4>
-                                                <p className="text-[#DBDEE1] text-xs whitespace-pre-wrap leading-relaxed">
-                                                    {config.description || "Bem-vindo ao Sistema de Tickets!\n\nSelecione uma categoria abaixo..."}
-                                                </p>
-                                            </div>
-
-                                            {/* Banner */}
-                                            {(config.bannerUrl || "https://placehold.co/1200x400/1e1e2e/ffffff.png?text=CoreBot+Tickets&font=montserrat") && (
-                                                <div className="rounded-lg overflow-hidden relative w-full aspect-2/1 bg-zinc-800 mt-2">
-                                                    <img
-                                                        src={config.bannerUrl || "https://placehold.co/1200x400/1e1e2e/ffffff.png?text=CoreBot+Tickets&font=montserrat"}
-                                                        alt="Banner"
-                                                        className="w-full h-full object-cover"
-                                                        onError={(e) => {
-                                                            (e.target as HTMLImageElement).style.display = 'none';
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
-
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <div className="w-4 h-4 rounded-full bg-zinc-700"></div>
-                                                <span className="text-[10px] text-zinc-400 font-medium">
-                                                    {config.footer || "🌌 CoreBot - Explorando o Universo Juntos"}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Components Preview */}
-                                    <div className="space-y-2 mt-1 max-w-sm">
-                                        <div className="bg-[#2B2D31] p-2.5 rounded border border-zinc-700/50 flex items-center justify-between cursor-pointer hover:bg-[#35373C] transition-colors">
-                                            <span className="text-zinc-400 text-sm">Selecione uma categoria...</span>
-                                            <span className="text-zinc-500">▼</span>
-                                        </div>
-
-                                        {/* Button Preview (Visual simulation of what a button might look like if used) */}
-                                        {/* <div className="bg-[#5865F2] hover:bg-[#4752C4] text-white px-4 py-2 rounded text-sm font-medium transition-colors cursor-pointer inline-flex items-center gap-2">
-                                            <span>{config.buttonEmoji}</span>
-                                            <span>{config.buttonText}</span>
-                                        </div> */}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 p-4 bg-violet-500/10 border border-violet-500/20 rounded-lg">
+                        <div className="mt-6 p-4 bg-violet-500/10 border border-violet-500/20 rounded-xl">
                             <h4 className="text-violet-300 font-medium text-sm mb-1 flex items-center gap-2">
                                 <Settings className="w-4 h-4" />
                                 Dica Pro
                             </h4>
-                            <p className="text-zinc-400 text-xs">
-                                As alterações feitas aqui atualizam o painel enviado pelo comando <code>/ticket-painel</code>.
+                            <p className="text-zinc-400 text-xs leading-relaxed">
+                                As alterações feitas aqui atualizam o painel enviado pelo comando <code className="bg-black/40 px-1 py-0.5 rounded text-violet-300">/ticket-painel</code>.
                                 Você pode reenviar o painel a qualquer momento para aplicar o novo visual.
                             </p>
                         </div>

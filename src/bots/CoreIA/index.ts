@@ -38,6 +38,7 @@ import {
     closePool,
     upsertGuildConfig,
     getGuildConfig,
+    getKnowledgeBase,
     checkAiLimit,
     incrementAiUsage,
     getLimitMessage,
@@ -692,8 +693,23 @@ async function runChatGeralLogic(message: Message): Promise<void> {
                 contextoUsuario = "ADMINISTRADOR";
             }
 
-            // SaaS: Personalidade Dinâmica
-            const promptSistema = config?.ia_system_prompt || `Você é a IA do CoreBot. Personalidade ÁCIDA. Usuario: ${contextoUsuario}`;
+            // SaaS: Personalidade Dinâmica + Base de Conhecimento Própria
+            let promptSistema = config?.ia_system_prompt || `Você é a IA do CoreBot. Personalidade Útil e Direta. Usuário: ${contextoUsuario}`;
+
+            // 🧠 Injeção de RAG / Base de Conhecimento do Servidor
+            try {
+                const knowledgeTopics = await getKnowledgeBase(guildId);
+                if (knowledgeTopics && knowledgeTopics.length > 0) {
+                    let kbContext = "\n\nBASE DE CONHECIMENTO ESPECÍFICA DESTE SERVIDOR (Use como verdade oficial):\n";
+                    for (const kb of knowledgeTopics) {
+                        kbContext += `📌 [${kb.topic}]: ${kb.content}\n`;
+                    }
+                    kbContext += "\nSe o usuário perguntar algo relacionado aos tópicos acima, responda com base nessas informações.";
+                    promptSistema += kbContext;
+                }
+            } catch (kbErr) {
+                logger.warn('Não foi possível carregar base de conhecimento da guilda', { error: kbErr });
+            }
 
             const resposta = await llmService.gerarResposta(historicoContexto, promptSistema, imageUrl);
 

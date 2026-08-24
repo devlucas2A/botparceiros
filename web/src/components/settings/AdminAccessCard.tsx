@@ -30,8 +30,8 @@ export function AdminAccessCard({ guildId, initialAdminRoles }: Props) {
 
     return (
         <SettingsCard
-            title="Acesso ao Painel"
-            description="Cargos que podem usar comandos administrativos do bot no Discord."
+            title="Acesso ao Painel & Comandos"
+            description="Cargos autorizados a executar comandos administrativos do bot no Discord."
             icon={Users}
             iconColor="text-blue-400"
             accent="blue"
@@ -44,21 +44,21 @@ export function AdminAccessCard({ guildId, initialAdminRoles }: Props) {
                     onChange={setRoles}
                     placeholder="Selecione cargos com acesso admin..."
                 />
-                <p className="text-[10px] text-zinc-500">
-                    Quem tem MANAGE_GUILD no Discord sempre acessa o painel. Esta lista controla apenas comandos admin via Discord.
+                <p className="text-[11px] text-zinc-500">
+                    Quem possui a permissão <code className="text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded font-mono">GERENCIAR SERVIDOR (MANAGE_GUILD)</code> no Discord sempre tem acesso total. Esta lista concede permissão a comandos administrativos extras via chat.
                 </p>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end pt-2">
                 <Button
                     onClick={handleSave}
                     disabled={saving}
-                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                    className="rounded-xl px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-lg shadow-blue-900/20 cursor-pointer"
                 >
                     {saving ? (
                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Salvando...</>
                     ) : (
-                        <><Save className="w-4 h-4 mr-2" /> Salvar</>
+                        <><Save className="w-4 h-4 mr-2" /> Salvar Cargos</>
                     )}
                 </Button>
             </div>

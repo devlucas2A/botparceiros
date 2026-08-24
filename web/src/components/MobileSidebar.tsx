@@ -1,23 +1,10 @@
-"use client";
-
 import { useState, useEffect } from "react";
-import { Menu, X, LucideIcon } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { SidebarContent, MenuItem } from "./SidebarContent";
+import { SidebarContent, SidebarContentProps } from "./SidebarContent";
 import { usePathname } from "next/navigation";
 
-interface MobileSidebarProps {
-    title: string;
-    logo?: string;
-    serverIcon?: string;
-    items: MenuItem[];
-    backLink?: {
-        href: string;
-        label: string;
-    };
-}
-
-export function MobileSidebar(props: MobileSidebarProps) {
+export function MobileSidebar(props: SidebarContentProps) {
     const [isOpen, setIsOpen] = useState(false);
     const pathname = usePathname();
 

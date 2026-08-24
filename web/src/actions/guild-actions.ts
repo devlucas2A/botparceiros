@@ -149,7 +149,13 @@ export async function updateAutoModConfig(prevState: GuildConfigState, formData:
             automod_timeout_duration: data.automodTimeoutDuration,
             automod_log_channel: data.automodLogChannel || null,
             automod_bypass_roles: data.automodBypassRoles,
-            automod_ai_enabled: data.automodAiEnabled
+            automod_ai_enabled: data.automodAiEnabled,
+            automod_link_whitelist: data.automodLinkWhitelist,
+            automod_ignored_channels: data.automodIgnoredChannels,
+            automod_max_mentions: data.automodMaxMentions,
+            antiraid_enabled: data.antiraidEnabled,
+            antiraid_min_account_age_days: data.antiraidMinAccountAgeDays,
+            antiraid_action: data.antiraidAction
         };
 
         await database.upsertGuildConfig(data.guildId, updateData);

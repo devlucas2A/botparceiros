@@ -52,12 +52,22 @@ export {
     saveServerGeneration,
     getLastServerGeneration,
     markServerGenerationUndone,
+    // Ticket Transcripts
+    saveTicketTranscript,
+    getTicketTranscripts,
+    getTicketTranscriptById,
+    // Knowledge Base
+    getKnowledgeBase,
+    createKnowledgeTopic,
+    updateKnowledgeTopic,
+    deleteKnowledgeTopic,
     // Cleanup
     closePool
 } from './database';
 
-export type { GuildConfig, AuditLog, PrivateCall, Ticket, TicketCategory, CustomCommand, ServerGeneration } from './database';
+export type { GuildConfig, AuditLog, PrivateCall, Ticket, TicketCategory, TicketTranscript, KnowledgeBaseTopic, CustomCommand, ServerGeneration } from './database';
 
 export { getUserPlan, getPlanUpgradeMessage, canUseFeature } from './plan-features';
 export { checkAiLimit, incrementAiUsage, getLimitMessage, checkServerGenLimit, incrementServerGenUsage, syncRedisLimitsToDatabase } from './ai-limit.service';
 export { redisService } from './redis.service';
+

@@ -37,10 +37,45 @@ export function checkCaps(content: string, threshold = 0.7, minLength = 10): boo
     return ratio >= threshold;
 }
 
-export function checkLinks(content: string): boolean {
-    // Regex simples para detectar http/https links
-    const linkRegex = /(https?:\/\/[^\s]+)/g;
-    return linkRegex.test(content);
+export function checkLinks(content: string, whitelist: string[] = []): boolean {
+    const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|(discord\.gg\/[^\s]+)|(discord\.com\/invite\/[^\s]+)/gi;
+    const matches = content.match(linkRegex);
+    if (!matches || matches.length === 0) return false;
+
+    // Se houver whitelist configurada, verifica se todos os links encontrados estão autorizados
+    if (whitelist && whitelist.length > 0) {
+        const cleanWhitelist = whitelist.map(w => w.trim().toLowerCase()).filter(Boolean);
+        const hasUnauthorizedLink = matches.some(link => {
+            const lowerLink = link.toLowerCase();
+            return !cleanWhitelist.some(domain => lowerLink.includes(domain));
+        });
+        return hasUnauthorizedLink;
+    }
+
+    return true;
+}
+
+export function checkMassMentions(message: Message, maxMentions: number): boolean {
+    if (!maxMentions || maxMentions <= 0) return false;
+
+    const userCount = message.mentions.users?.size || 0;
+    const roleCount = message.mentions.roles?.size || 0;
+    const everyoneCount = message.mentions.everyone ? 1 : 0;
+    const total = userCount + roleCount + everyoneCount;
+
+    return total > maxMentions;
+}
+
+export function checkAccountAge(createdAt: Date, minDays: number): { isSuspicious: boolean; ageDays: number } {
+    if (!minDays || minDays <= 0) return { isSuspicious: false, ageDays: 0 };
+
+    const ageMs = Date.now() - createdAt.getTime();
+    const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+
+    return {
+        isSuspicious: ageDays < minDays,
+        ageDays
+    };
 }
 
 export function checkFlood(content: string): boolean {
