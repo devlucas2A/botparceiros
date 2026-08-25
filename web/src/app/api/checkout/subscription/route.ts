@@ -56,7 +56,7 @@ export async function POST(req: Request) {
             ? 'https://example.com'
             : (process.env.NEXTAUTH_URL || 'https://corebot.app');
 
-        const backUrl = `${baseUrl}/dashboard/billing?success=true&plan=${plan}`;
+        const backUrl = `${baseUrl}/dashboard/billing?success=true&plan=${plan}&popup=true`;
         console.log("Creating PreApproval for", selectedPlanConfig.title, "Back URL:", backUrl);
 
         const response = await preapproval.create({

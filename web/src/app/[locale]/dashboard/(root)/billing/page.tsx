@@ -26,6 +26,7 @@ import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { SUBSCRIPTION_PLANS, PLAN_LIMITS, PlanId } from "@/config/subscription";
 import { toast } from "sonner";
+import { CheckoutModal } from "@/components/billing/CheckoutModal";
 
 interface SubscriptionData {
     id: string;
@@ -70,6 +71,51 @@ export default function BillingPage() {
 
     const initializedRef = useRef(false);
 
+    // Estado do Modal de Checkout
+    const [checkoutModal, setCheckoutModal] = useState<{
+        isOpen: boolean;
+        checkoutUrl: string | null;
+        plan: string;
+        planTitle: string;
+        price: number;
+        interval: 'monthly' | 'yearly';
+    }>({
+        isOpen: false,
+        checkoutUrl: null,
+        plan: 'pro',
+        planTitle: 'Pro',
+        price: 0,
+        interval: 'monthly'
+    });
+
+    // Função para recarregar assinatura ativa
+    const fetchSubscription = () => {
+        setSubLoading(true);
+        fetch(`/api/user/subscription?_t=${Date.now()}`)
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.subscription) {
+                    setSubscription(data.subscription);
+                }
+            })
+            .catch(() => { })
+            .finally(() => setSubLoading(false));
+    };
+
+    // Função para recarregar uso do plano
+    const fetchUsage = () => {
+        setUsageLoading(true);
+        fetch(`/api/user/usage?refresh=true&_t=${Date.now()}`)
+            .then((res) => res.json())
+            .then((data) => {
+                if (!data.error) {
+                    setUsage(data);
+                }
+            })
+            .catch(() => { })
+            .finally(() => setUsageLoading(false));
+    };
+
     // Toast de confirmação ao retornar do checkout com sucesso
     useEffect(() => {
         if (searchParams.get('success') === 'true') {
@@ -82,30 +128,25 @@ export default function BillingPage() {
         }
     }, [searchParams]);
 
-    // Buscar assinatura ativa
+    // Trata callback se esta página for aberta como popup
     useEffect(() => {
-        fetch(`/api/user/subscription?_t=${Date.now()}`)
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.subscription) {
-                    setSubscription(data.subscription);
+        if (typeof window !== 'undefined' && searchParams.get('popup') === 'true') {
+            const upgradedPlan = searchParams.get('plan') || 'pro';
+            if (window.opener) {
+                try {
+                    window.opener.postMessage({ type: 'COREBOT_PAYMENT_SUCCESS', plan: upgradedPlan }, '*');
+                    window.close();
+                } catch {
+                    // Ignore window close error
                 }
-            })
-            .catch(() => { })
-            .finally(() => setSubLoading(false));
-    }, []);
+            }
+        }
+    }, [searchParams]);
 
-    // Buscar uso do plano
+    // Buscar dados na montagem inicial
     useEffect(() => {
-        fetch(`/api/user/usage?refresh=true&_t=${Date.now()}`)
-            .then((res) => res.json())
-            .then((data) => {
-                if (!data.error) {
-                    setUsage(data);
-                }
-            })
-            .catch(() => { })
-            .finally(() => setUsageLoading(false));
+        fetchSubscription();
+        fetchUsage();
     }, []);
 
     useEffect(() => {
@@ -119,7 +160,7 @@ export default function BillingPage() {
     const handleSubscribe = async (plan: string, cycle?: 'monthly' | 'yearly') => {
         const activeCycle = cycle || billingCycle;
         setLoading(plan);
-        const toastId = toast.loading(`Iniciando checkout do plano ${plan.toUpperCase()} (${activeCycle === 'yearly' ? 'Anual - 20% OFF' : 'Mensal'})...`);
+        const toastId = toast.loading(`Preparando checkout do plano ${plan.toUpperCase()} (${activeCycle === 'yearly' ? 'Anual - 20% OFF' : 'Mensal'})...`);
         try {
             const res = await fetch("/api/checkout/subscription", {
                 method: "POST",
@@ -145,8 +186,25 @@ export default function BillingPage() {
 
             if (data.url) {
                 toast.dismiss(toastId);
-                toast.success("Redirecionando para o pagamento seguro...");
-                window.location.href = data.url;
+                // Se for URL de simulação (sandbox dev sem token)
+                if (data.url.startsWith('/dashboard/billing')) {
+                    toast.success("Simulação de upgrade realizada!");
+                    fetchSubscription();
+                    fetchUsage();
+                } else {
+                    const planConfig = SUBSCRIPTION_PLANS[plan as PlanId];
+                    const isYearly = activeCycle === 'yearly';
+                    const price = isYearly ? (planConfig?.price_yearly || 0) * 12 : (planConfig?.price || 0);
+
+                    setCheckoutModal({
+                        isOpen: true,
+                        checkoutUrl: data.url,
+                        plan,
+                        planTitle: planConfig?.title || plan.toUpperCase(),
+                        price,
+                        interval: activeCycle
+                    });
+                }
             }
         } catch (error: any) {
             toast.dismiss(toastId);
@@ -763,6 +821,26 @@ export default function BillingPage() {
                 </div>
 
             </div>
+
+            {/* ═══════════════════════════════════════════ */}
+            {/* 💳 MODAL DE CHECKOUT MERCADO PAGO          */}
+            {/* ═══════════════════════════════════════════ */}
+            <CheckoutModal
+                isOpen={checkoutModal.isOpen}
+                checkoutUrl={checkoutModal.checkoutUrl}
+                plan={checkoutModal.plan}
+                planTitle={checkoutModal.planTitle}
+                price={checkoutModal.price}
+                interval={checkoutModal.interval}
+                onClose={() => setCheckoutModal(prev => ({ ...prev, isOpen: false }))}
+                onSuccess={(upgradedPlan) => {
+                    toast.success("Assinatura Confirmada!", {
+                        description: `O seu plano ${upgradedPlan.toUpperCase()} foi ativado com sucesso!`
+                    });
+                    fetchSubscription();
+                    fetchUsage();
+                }}
+            />
         </div>
     );
 }
