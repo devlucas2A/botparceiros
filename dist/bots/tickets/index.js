@@ -38,9 +38,6 @@ function hasAdminPermission(member) {
         (SEMI_OWNER_ROLE_ID ? member.roles.cache.has(SEMI_OWNER_ROLE_ID) : false) ||
         member.permissions.has(discord_js_1.PermissionFlagsBits.Administrator);
 }
-function _generateCategoryId() {
-    return `cat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
 // ═══════════════════════════════════════════════════════════════════════════
 // 📝 SLASH COMMANDS
 // ═══════════════════════════════════════════════════════════════════════════

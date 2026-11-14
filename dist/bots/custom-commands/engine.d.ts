@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction } from 'discord.js';
 interface Action {
-    type: 'REPLY' | 'ADD_ROLE' | 'REMOVE_ROLE' | 'SEND_DM' | 'SEND_CHANNEL' | 'KICK' | 'BAN' | 'RANDOM_IMAGE' | 'SET_NICKNAME' | 'EXTERNAL_API';
+    type: 'REPLY' | 'ADD_ROLE' | 'REMOVE_ROLE' | 'SEND_DM' | 'SEND_CHANNEL' | 'KICK' | 'BAN' | 'RANDOM_IMAGE' | 'SET_NICKNAME' | 'EXTERNAL_API' | 'AI_REPLY';
     [key: string]: any;
 }
 export declare class CommandEngine {
@@ -8,6 +8,8 @@ export declare class CommandEngine {
     private getTargetMember;
     private interpolate;
     private executeAction;
+    /** Envia feedback consistente: editReply se ainda nao respondeu, senao followUp ephemeral. */
+    private sendActionFeedback;
 }
 export declare const commandEngine: CommandEngine;
 export {};

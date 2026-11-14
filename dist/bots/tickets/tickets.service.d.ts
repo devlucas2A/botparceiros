@@ -36,7 +36,7 @@ export declare function createTicketChannel(guild: Guild, member: GuildMember, c
  */
 export declare function handleTicketClaim(interaction: any): Promise<void>;
 /**
- * Gera o transcript e fecha o ticket.
+ * Gera o transcript visual em HTML com IA e fecha o ticket.
  */
 export declare function closeTicketProcess(channel: TextChannel, guild: Guild, closedBy: GuildMember, categoryName: string): Promise<void>;
 //# sourceMappingURL=tickets.service.d.ts.map

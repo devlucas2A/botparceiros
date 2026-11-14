@@ -30,6 +30,8 @@ export interface DatabaseConfig {
 }
 export interface RedisConfig {
     url?: string;
+    restUrl?: string;
+    restToken?: string;
 }
 export declare class ConfigService {
     /**

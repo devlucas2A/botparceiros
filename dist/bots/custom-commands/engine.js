@@ -130,6 +130,26 @@ class CommandEngine {
                     }
                     return true;
                 }
+                case 'AI_REPLY': {
+                    const promptTemplate = action.prompt || action.content || '';
+                    const systemPrompt = action.system_prompt || 'Você é um assistente útil do servidor.';
+                    const ephemeral = action.ephemeral || false;
+                    const finalPrompt = interpolate(promptTemplate);
+                    if (!firstResponseSent && interaction.deferred) {
+                        // Send a thinking state if we are going to wait for AI
+                        await interaction.editReply({ content: '🤔 Pensando...' });
+                    }
+                    // To avoid circular dependency, dynamically import llmService or we can import it at the top
+                    const { llmService } = require('../../shared/services/llm.service');
+                    const responseText = await llmService.generateResponse([{ role: 'user', content: finalPrompt }], systemPrompt);
+                    if (!firstResponseSent && interaction.deferred) {
+                        await interaction.editReply({ content: responseText });
+                    }
+                    else {
+                        await interaction.followUp({ content: responseText, ephemeral });
+                    }
+                    return true;
+                }
                 case 'RANDOM_IMAGE': {
                     const category = action.category || 'anime_hug';
                     services_1.logger.info(`[CommandEngine] RANDOM_IMAGE: Fetching GIF for category '${category}'`);
@@ -364,21 +384,66 @@ class CommandEngine {
                     await target.send(dmContent).catch(() => { });
                     return false;
                 }
-                case 'SEND_CHANNEL':
-                    const channelId = action.channel_id;
-                    const channelMsg = interpolate(action.content);
-                    const channel = guild.channels.cache.get(channelId);
-                    if (channel) {
-                        await channel.send(channelMsg);
+                case 'SEND_CHANNEL': {
+                    const rawId = interpolate(action.channel_id || '');
+                    const cleanId = rawId.replace(/[<#>]/g, '').trim();
+                    const channelMsg = interpolate(action.content || '');
+                    if (!cleanId || !/^\d{17,20}$/.test(cleanId)) {
+                        services_1.logger.warn('[CommandEngine] SEND_CHANNEL: channel_id invalido', { rawId, actionChannelId: action.channel_id });
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Canal inválido. Verifique se o comando recebeu uma opção do tipo CHANNEL.');
+                        return true;
                     }
-                    return false;
+                    if (!channelMsg.trim()) {
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Mensagem vazia. Nada foi enviado.');
+                        return true;
+                    }
+                    let channel = null;
+                    try {
+                        const cached = guild.channels.cache.get(cleanId);
+                        channel = (cached ?? await guild.channels.fetch(cleanId));
+                    }
+                    catch (e) {
+                        services_1.logger.warn(`[CommandEngine] SEND_CHANNEL: canal ${cleanId} nao encontrado`, { e });
+                    }
+                    if (!channel || typeof channel.isTextBased !== 'function' || !channel.isTextBased()) {
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Canal não encontrado ou não suporta texto.');
+                        return true;
+                    }
+                    const me = guild.members.me;
+                    if (me && !channel.permissionsFor(me)?.has(['ViewChannel', 'SendMessages'])) {
+                        await this.sendActionFeedback(interaction, firstResponseSent, `⚠️ Sem permissão para enviar em <#${cleanId}>.`);
+                        return true;
+                    }
+                    try {
+                        await channel.send(channelMsg);
+                        await this.sendActionFeedback(interaction, firstResponseSent, `✅ Mensagem enviada em <#${cleanId}>.`);
+                    }
+                    catch (err) {
+                        services_1.logger.error('[CommandEngine] SEND_CHANNEL: falha ao enviar', { err });
+                        await this.sendActionFeedback(interaction, firstResponseSent, '⚠️ Não foi possível enviar a mensagem no canal.');
+                    }
+                    return true;
+                }
                 default:
                     return false;
             }
         }
         catch (error) {
-            services_1.logger.error(`Error executing action ${action.type}`, { error });
+            services_1.logger.error(`Error executing action ${action.type}`, { error, action: { type: action.type } });
+            try {
+                await this.sendActionFeedback(interaction, firstResponseSent, `⚠️ Falha ao executar etapa **${action.type}** do comando.`);
+            }
+            catch { /* ignore */ }
             return false;
+        }
+    }
+    /** Envia feedback consistente: editReply se ainda nao respondeu, senao followUp ephemeral. */
+    async sendActionFeedback(interaction, firstResponseSent, message) {
+        if (!firstResponseSent && interaction.deferred) {
+            await interaction.editReply({ content: message }).catch(() => { });
+        }
+        else {
+            await interaction.followUp({ content: message, ephemeral: true }).catch(() => { });
         }
     }
 }

@@ -61,6 +61,8 @@ const events_3 = require("../tickets/events");
 const engine_1 = require("../custom-commands/engine");
 const service_1 = require("../custom-commands/service");
 const events_4 = require("../private-calls/events");
+const heartbeat_service_1 = require("../../shared/services/heartbeat.service");
+const command_1 = require("../server-builder/command");
 let dbConnected = false;
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔐 VALIDAÇÃO
@@ -525,7 +527,9 @@ const client = new discord_js_1.Client({
         discord_js_1.GatewayIntentBits.GuildMembers,
         discord_js_1.GatewayIntentBits.GuildVoiceStates
     ],
-    partials: [discord_js_1.Partials.Channel, discord_js_1.Partials.Message]
+    // Partials.GuildMember é essencial para receber guildMemberRemove
+    // de membros que não estão no cache no momento da saída.
+    partials: [discord_js_1.Partials.Channel, discord_js_1.Partials.Message, discord_js_1.Partials.GuildMember]
 });
 const conversasAtivas = new Map();
 let ultimoTempoMensagemGeral = Date.now();
@@ -608,8 +612,23 @@ async function runChatGeralLogic(message) {
             if (config?.ia_admin_roles && config.ia_admin_roles.some(roleId => member.roles.cache.has(roleId))) {
                 contextoUsuario = "ADMINISTRADOR";
             }
-            // SaaS: Personalidade Dinâmica
-            const promptSistema = config?.ia_system_prompt || `Você é a IA do CoreBot. Personalidade ÁCIDA. Usuario: ${contextoUsuario}`;
+            // SaaS: Personalidade Dinâmica + Base de Conhecimento Própria
+            let promptSistema = config?.ia_system_prompt || `Você é a IA do CoreBot. Personalidade Útil e Direta. Usuário: ${contextoUsuario}`;
+            // 🧠 Injeção de RAG / Base de Conhecimento do Servidor
+            try {
+                const knowledgeTopics = await (0, services_1.getKnowledgeBase)(guildId);
+                if (knowledgeTopics && knowledgeTopics.length > 0) {
+                    let kbContext = "\n\nBASE DE CONHECIMENTO ESPECÍFICA DESTE SERVIDOR (Use como verdade oficial):\n";
+                    for (const kb of knowledgeTopics) {
+                        kbContext += `📌 [${kb.topic}]: ${kb.content}\n`;
+                    }
+                    kbContext += "\nSe o usuário perguntar algo relacionado aos tópicos acima, responda com base nessas informações.";
+                    promptSistema += kbContext;
+                }
+            }
+            catch (kbErr) {
+                services_1.logger.warn('Não foi possível carregar base de conhecimento da guilda', { error: kbErr });
+            }
             const resposta = await llmService.gerarResposta(historicoContexto, promptSistema, imageUrl);
             // ✅ Increment Usage
             await (0, services_1.incrementAiUsage)(message.author.id, guildId);
@@ -754,6 +773,11 @@ client.on('interactionCreate', async (interaction) => {
     if (!interaction.isButton())
         return;
     const customId = interaction.customId;
+    // Server Builder buttons (confirm/regen/cancel)
+    if (customId.startsWith('srvgen:')) {
+        await (0, command_1.handleServerBuilderButton)(interaction);
+        return;
+    }
     // Handle GIF interaction buttons: gif_retribuir:category:originalUserId or gif_action:category:originalUserId
     if (!customId.startsWith('gif_retribuir:') && !customId.startsWith('gif_action:'))
         return;
@@ -883,63 +907,12 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     if (interaction.commandName === 'construir-servidor') {
-        services_1.logger.info('🏗️ Comando /construir-servidor recebido');
-        try {
-            const theme = interaction.options.getString('tema', true);
-            const guildId = interaction.guildId;
-            // ⚡ DEFER FIRST (Prevent 3s timeout)
-            await interaction.deferReply({ ephemeral: false });
-            services_1.logger.info('🏗️ DeferReply enviado');
-            // 🛑 Check Server Generation Limit
-            const limitCheck = await (0, services_1.checkServerGenLimit)(interaction.user.id);
-            if (!limitCheck.allowed) {
-                const planNames = { free: 'Free', starter: 'Starter', pro: 'Pro', ultimate: 'Ultimate' };
-                const limitEmbed = new discord_js_1.EmbedBuilder()
-                    .setTitle('⚠️ Limite de Gerações Atingido')
-                    .setDescription(`Você utilizou todas as **${limitCheck.limit} geração(ões) de servidor** disponíveis este mês no plano **${planNames[limitCheck.plan] || limitCheck.plan}**.\n\nPara gerar mais servidores, o **dono do servidor** pode fazer upgrade no painel.`)
-                    .setColor(0xFFA500)
-                    .setFooter({ text: `Plano: ${planNames[limitCheck.plan] || limitCheck.plan} • Limite: ${limitCheck.limit}/mês` })
-                    .setTimestamp();
-                await interaction.editReply({ embeds: [limitEmbed] });
-                return;
-            }
-            services_1.logger.info(`🏗️ Tema: ${theme}`);
-            // 1. Gerar Arquitetura
-            const schema = await server_builder_service_1.serverBuilder.generateServerPlan(theme);
-            if (!schema) {
-                await interaction.editReply('❌ Falha ao projetar o servidor. A IA não retornou um plano válido. Tente novamente.');
-                return;
-            }
-            const guild = interaction.guild || await client.guilds.fetch(guildId);
-            await interaction.editReply(`📐 Plano gerado! Criando ${schema.roles.length} cargos e ${schema.categories.length} categorias...`);
-            // 2. Construir
-            await server_builder_service_1.serverBuilder.buildServer(guild, schema, async (msg) => {
-                services_1.logger.info(msg);
-            });
-            // ✅ Increment Usage
-            await (0, services_1.incrementServerGenUsage)(interaction.user.id);
-            await interaction.followUp({
-                content: `✅ **Servidor Construído com Sucesso!** 🚀\nTema: ${theme.substring(0, 100)}${theme.length > 100 ? '...' : ''}\n\n*Nota: Ajuste as permissões de canais se necessário.*`,
-                ephemeral: false
-            });
-        }
-        catch (error) {
-            const errorMsg = String(error.message || 'Erro desconhecido').substring(0, 1800);
-            services_1.logger.error('Erro ao construir servidor:', { error: error });
-            try {
-                // Tenta responder se ainda não tiver respondido, ou editar se já tiver diferido
-                if (interaction.deferred || interaction.replied) {
-                    await interaction.followUp({ content: `❌ Ocorreu um erro: ${errorMsg}`, ephemeral: true });
-                }
-                else {
-                    await interaction.reply({ content: `❌ Ocorreu um erro: ${errorMsg}`, ephemeral: true });
-                }
-            }
-            catch (err) {
-                // Se falhar até em reportar o erro (ex: Unknown Interaction), apenas loga
-                console.error('Erro crítico na interação (possível timeout/duplicação):', err);
-            }
-        }
+        await (0, command_1.handleConstruirServidor)(interaction);
+        return;
+    }
+    if (interaction.commandName === 'desfazer-servidor') {
+        await (0, command_1.handleDesfazerServidor)(interaction);
+        return;
     }
     else if (interaction.commandName === 'ajustar-servidor') {
         services_1.logger.info('🔧 Comando /ajustar-servidor recebido');
@@ -1126,7 +1099,26 @@ const commands = [
         .setDefaultMemberPermissions(discord_js_1.PermissionFlagsBits.Administrator)
         .addStringOption(opt => opt.setName('tema')
         .setDescription('Ex: RPG Medieval com economia e 3 classes')
-        .setRequired(true)),
+        .setRequired(true))
+        .addStringOption(opt => opt.setName('estilo')
+        .setDescription('Estilo do servidor (afeta categorias e canais sugeridos)')
+        .setRequired(false)
+        .addChoices({ name: '🎮 Gaming', value: 'gaming' }, { name: '👥 Comunidade', value: 'comunidade' }, { name: '🎲 RPG', value: 'rpg' }, { name: '📚 Educacional', value: 'educacional' }, { name: '🏢 Empresa', value: 'empresa' }, { name: '✨ Outro', value: 'outro' }))
+        .addStringOption(opt => opt.setName('tamanho')
+        .setDescription('Quantidade de canais/cargos a gerar')
+        .setRequired(false)
+        .addChoices({ name: 'Enxuto (~10 canais)', value: 'enxuto' }, { name: 'Médio (~20 canais)', value: 'medio' }, { name: 'Completo (~30+ canais)', value: 'completo' }))
+        .addStringOption(opt => opt.setName('idioma')
+        .setDescription('Idioma dos nomes e descrições')
+        .setRequired(false)
+        .addChoices({ name: 'Português (BR)', value: 'pt' }, { name: 'English', value: 'en' }, { name: 'Español', value: 'es' }))
+        .addBooleanOption(opt => opt.setName('considerar_existente')
+        .setDescription('Se true (padrão), a IA evita duplicar canais/cargos que já existem')
+        .setRequired(false)),
+    new discord_js_1.SlashCommandBuilder()
+        .setName('desfazer-servidor')
+        .setDescription('↩️ Reverte a última geração de servidor (até 24h)')
+        .setDefaultMemberPermissions(discord_js_1.PermissionFlagsBits.Administrator),
     new discord_js_1.SlashCommandBuilder()
         .setName('ajustar-servidor')
         .setDescription('🔧 Modifica canais/cargos usando linguagem natural')
@@ -1157,6 +1149,8 @@ async function registerCommands(clientId) {
 // ═══════════════════════════════════════════════════════════════════════════
 client.once('clientReady', async () => {
     services_1.logger.info(`🤖 COREIA CORE BOT (Multifuncional) - ONLINE`);
+    // Iniciar heartbeat para /api/health saber se o bot esta vivo
+    heartbeat_service_1.heartbeatService.start(client);
     // Iniciar verificação de inatividade
     verificarInatividade();
     // Registrar comandos SEMPRE (independente do database)
@@ -1234,11 +1228,26 @@ client.login(TOKEN).catch(error => {
 });
 process.on('SIGINT', async () => {
     services_1.logger.info('Encerrando CoreIA...');
+    heartbeat_service_1.heartbeatService.stop();
     await (0, services_1.closePool)();
     client.destroy();
     process.exit(0);
 });
+// Defesa de processo: NAO deixar o bot morrer por erros transientes
+// (DiscordAPIError 10062 "Unknown interaction" e o caso mais comum).
+// Logamos detalhado para diagnostico, mas o processo segue vivo.
 process.on('unhandledRejection', (error) => {
-    services_1.logger.error('Erro não tratado:', { error });
+    services_1.logger.error('🛡️ unhandledRejection (processo NAO sera encerrado):', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack?.slice(0, 1000),
+    });
+});
+process.on('uncaughtException', (error) => {
+    services_1.logger.error('🛡️ uncaughtException (processo NAO sera encerrado):', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack?.slice(0, 1000),
+    });
 });
 //# sourceMappingURL=index.js.map

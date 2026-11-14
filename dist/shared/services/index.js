@@ -3,7 +3,8 @@
  * 📦 Barrel file for shared services
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.redisService = exports.syncRedisLimitsToDatabase = exports.incrementServerGenUsage = exports.checkServerGenLimit = exports.getLimitMessage = exports.incrementAiUsage = exports.checkAiLimit = exports.canUseFeature = exports.getPlanUpgradeMessage = exports.getUserPlan = exports.closePool = exports.toggleCustomCommand = exports.deleteCustomCommand = exports.getCustomCommand = exports.getCustomCommands = exports.createCustomCommand = exports.claimTicket = exports.getTicketCategory = exports.deleteTicketCategory = exports.updateTicketCategory = exports.getTicketCategories = exports.createTicketCategory = exports.getOpenTickets = exports.deleteTicket = exports.closeTicket = exports.getTicketsByUser = exports.getTicket = exports.createTicket = exports.getAllPrivateCalls = exports.deletePrivateCall = exports.updatePrivateCall = exports.getPrivateCallByOwner = exports.getPrivateCall = exports.createPrivateCall = exports.getAuditLogs = exports.logAudit = exports.upsertGuildConfig = exports.getGuildConfig = exports.initializeSchema = exports.testConnection = exports.query = exports.getPool = exports.database = exports.ConfigService = exports.config = exports.Logger = exports.logger = exports.LLMService = exports.llmService = void 0;
+exports.getUserPlan = exports.closePool = exports.deleteKnowledgeTopic = exports.updateKnowledgeTopic = exports.createKnowledgeTopic = exports.getKnowledgeBase = exports.getTicketTranscriptById = exports.getTicketTranscripts = exports.saveTicketTranscript = exports.markServerGenerationUndone = exports.getLastServerGeneration = exports.saveServerGeneration = exports.toggleCustomCommand = exports.deleteCustomCommand = exports.getCustomCommand = exports.getCustomCommands = exports.createCustomCommand = exports.claimTicket = exports.getTicketCategory = exports.deleteTicketCategory = exports.updateTicketCategory = exports.getTicketCategories = exports.createTicketCategory = exports.getOpenTickets = exports.deleteTicket = exports.closeTicket = exports.getTicketsByUser = exports.getTicket = exports.createTicket = exports.getAllPrivateCalls = exports.deletePrivateCall = exports.updatePrivateCall = exports.getPrivateCallByOwner = exports.getPrivateCall = exports.createPrivateCall = exports.getAuditLogs = exports.logAudit = exports.upsertGuildConfig = exports.getGuildConfig = exports.initializeSchema = exports.testConnection = exports.query = exports.getPool = exports.database = exports.ConfigService = exports.config = exports.Logger = exports.logger = exports.LLMService = exports.llmService = void 0;
+exports.redisService = exports.syncRedisLimitsToDatabase = exports.incrementServerGenUsage = exports.checkServerGenLimit = exports.getLimitMessage = exports.incrementAiUsage = exports.checkAiLimit = exports.canUseFeature = exports.getPlanUpgradeMessage = void 0;
 var llm_service_1 = require("./llm.service");
 Object.defineProperty(exports, "llmService", { enumerable: true, get: function () { return llm_service_1.llmService; } });
 Object.defineProperty(exports, "LLMService", { enumerable: true, get: function () { return llm_service_1.LLMService; } });
@@ -55,6 +56,19 @@ Object.defineProperty(exports, "getCustomCommands", { enumerable: true, get: fun
 Object.defineProperty(exports, "getCustomCommand", { enumerable: true, get: function () { return database_1.getCustomCommand; } });
 Object.defineProperty(exports, "deleteCustomCommand", { enumerable: true, get: function () { return database_1.deleteCustomCommand; } });
 Object.defineProperty(exports, "toggleCustomCommand", { enumerable: true, get: function () { return database_1.toggleCustomCommand; } });
+// Server Generations
+Object.defineProperty(exports, "saveServerGeneration", { enumerable: true, get: function () { return database_1.saveServerGeneration; } });
+Object.defineProperty(exports, "getLastServerGeneration", { enumerable: true, get: function () { return database_1.getLastServerGeneration; } });
+Object.defineProperty(exports, "markServerGenerationUndone", { enumerable: true, get: function () { return database_1.markServerGenerationUndone; } });
+// Ticket Transcripts
+Object.defineProperty(exports, "saveTicketTranscript", { enumerable: true, get: function () { return database_1.saveTicketTranscript; } });
+Object.defineProperty(exports, "getTicketTranscripts", { enumerable: true, get: function () { return database_1.getTicketTranscripts; } });
+Object.defineProperty(exports, "getTicketTranscriptById", { enumerable: true, get: function () { return database_1.getTicketTranscriptById; } });
+// Knowledge Base
+Object.defineProperty(exports, "getKnowledgeBase", { enumerable: true, get: function () { return database_1.getKnowledgeBase; } });
+Object.defineProperty(exports, "createKnowledgeTopic", { enumerable: true, get: function () { return database_1.createKnowledgeTopic; } });
+Object.defineProperty(exports, "updateKnowledgeTopic", { enumerable: true, get: function () { return database_1.updateKnowledgeTopic; } });
+Object.defineProperty(exports, "deleteKnowledgeTopic", { enumerable: true, get: function () { return database_1.deleteKnowledgeTopic; } });
 // Cleanup
 Object.defineProperty(exports, "closePool", { enumerable: true, get: function () { return database_1.closePool; } });
 var plan_features_1 = require("./plan-features");

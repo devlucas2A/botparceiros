@@ -5,37 +5,68 @@ const discord_js_1 = require("discord.js");
 const services_1 = require("../../shared/services");
 const welcome_service_1 = require("./welcome.service");
 const analytics_service_1 = require("../../shared/services/analytics.service");
+// Guarda se já registramos os listeners — defesa contra dupla
+// chamada do setupWelcomeEvents() (nodemon hot-reload, importacao
+// circular, etc). NAO previne 2 instancias do bot rodando.
+let welcomeEventsRegistered = false;
 function setupWelcomeEvents(client) {
-    services_1.logger.info('🌌 Módulo Welcome: Eventos inicializados');
+    if (welcomeEventsRegistered) {
+        services_1.logger.warn(`[Welcome] setupWelcomeEvents ja foi chamado neste processo (pid ${process.pid}), ignorando duplicata.`);
+        return;
+    }
+    welcomeEventsRegistered = true;
+    services_1.logger.info(`🌌 Módulo Welcome (pid ${process.pid}): Eventos inicializados (guildMemberAdd + guildMemberRemove)`);
+    services_1.logger.info('   ℹ️ Estes eventos exigem o "SERVER MEMBERS INTENT" habilitado no Discord Developer Portal.');
     // Welcome
     client.on('guildMemberAdd', async (member) => {
-        if (member.user.bot)
+        services_1.logger.info(`[Welcome] [pid ${process.pid}] guildMemberAdd disparou: ${member.user.tag} em ${member.guild.id}`);
+        if (member.user.bot) {
+            services_1.logger.info(`[Welcome] Ignorado: ${member.user.tag} e bot`);
             return;
+        }
         const guildId = member.guild.id;
         (0, analytics_service_1.trackEvent)(guildId, 'member_join').catch(() => { });
+        (0, services_1.logAudit)(guildId, member.id, 'MEMBER_JOINED', undefined, { username: member.user.username, tag: member.user.tag }).catch(() => { });
         try {
             const config = await (0, services_1.getGuildConfig)(guildId);
-            if (!config || !config.welcome_channel_id)
+            if (!config) {
+                services_1.logger.warn(`[Welcome] Sem config para guild ${guildId} — pule ou crie no painel`);
                 return;
-            const channel = member.guild.channels.cache.get(config.welcome_channel_id);
+            }
+            if (!config.welcome_channel_id) {
+                services_1.logger.info(`[Welcome] welcome_channel_id nao configurado para guild ${guildId}`);
+                return;
+            }
+            // Cache + fetch fallback: cache.get pode falhar em horario de pico
+            let channel = null;
+            try {
+                const cached = member.guild.channels.cache.get(config.welcome_channel_id);
+                channel = (cached ?? await member.guild.channels.fetch(config.welcome_channel_id));
+            }
+            catch (err) {
+                services_1.logger.warn(`[Welcome] Canal ${config.welcome_channel_id} nao encontrado na guild ${guildId}`, { err });
+                return;
+            }
             if (!channel) {
-                services_1.logger.warn(`Canal de welcome ${config.welcome_channel_id} não encontrado na guild ${guildId}`);
+                services_1.logger.warn(`[Welcome] Canal ${config.welcome_channel_id} retornou null na guild ${guildId}`);
                 return;
             }
             const botPermissions = channel.permissionsFor(member.guild.members.me);
-            if (!botPermissions?.has(discord_js_1.PermissionFlagsBits.SendMessages) || !botPermissions?.has(discord_js_1.PermissionFlagsBits.AttachFiles)) {
-                services_1.logger.warn(`Sem permissão para enviar welcome em ${channel.name} (${guildId})`);
+            const hasSend = botPermissions?.has(discord_js_1.PermissionFlagsBits.SendMessages);
+            const hasAttach = botPermissions?.has(discord_js_1.PermissionFlagsBits.AttachFiles);
+            if (!hasSend || !hasAttach) {
+                services_1.logger.warn(`[Welcome] Sem permissao em #${channel.name} (guild ${guildId}): send=${hasSend} attach=${hasAttach}`);
                 return;
             }
             const messageText = config.welcome_message || 'Bem-vindo {user} ao servidor!';
             let buffer;
             // Tenta gerar o banner passando url e fonte do config
             try {
-                buffer = await (0, welcome_service_1.generateBanner)(member, messageText, config.welcome_banner_url, config.welcome_font);
+                buffer = await (0, welcome_service_1.generateBanner)(member, messageText, config.welcome_banner_url, config.welcome_font, 'welcome');
             }
             catch (error) {
                 services_1.logger.warn('Banner completo falhou, tentando versão rápida', { error });
-                buffer = await (0, welcome_service_1.generateBannerFast)(member, messageText, config.welcome_banner_url);
+                buffer = await (0, welcome_service_1.generateBannerFast)(member, messageText, config.welcome_banner_url, config.welcome_font, 'welcome');
             }
             const attachment = new discord_js_1.AttachmentBuilder(buffer, { name: 'welcome.png' });
             // Opcional: Adicionar AutoRole se configurado
@@ -64,28 +95,53 @@ function setupWelcomeEvents(client) {
     // Leave
     client.on('guildMemberRemove', async (member) => {
         const guildMember = member;
-        if (guildMember.user.bot)
+        const tag = guildMember.user?.tag || guildMember.id;
+        services_1.logger.info(`[Leave] [pid ${process.pid}] guildMemberRemove disparou: ${tag} em ${guildMember.guild?.id}`);
+        if (guildMember.user?.bot) {
+            services_1.logger.info(`[Leave] Ignorado: ${tag} e bot`);
             return;
+        }
         const guildId = guildMember.guild.id;
         (0, analytics_service_1.trackEvent)(guildId, 'member_leave').catch(() => { });
+        (0, services_1.logAudit)(guildId, guildMember.id, 'MEMBER_LEFT', undefined, { username: guildMember.user?.username, tag }).catch(() => { });
         try {
             const config = await (0, services_1.getGuildConfig)(guildId);
-            if (!config || !config.leave_channel_id)
+            if (!config) {
+                services_1.logger.warn(`[Leave] Sem config para guild ${guildId}`);
                 return;
-            const channel = guildMember.guild.channels.cache.get(config.leave_channel_id);
-            if (!channel)
+            }
+            if (!config.leave_channel_id) {
+                services_1.logger.info(`[Leave] leave_channel_id nao configurado para guild ${guildId}`);
                 return;
+            }
+            let channel = null;
+            try {
+                const cached = guildMember.guild.channels.cache.get(config.leave_channel_id);
+                channel = (cached ?? await guildMember.guild.channels.fetch(config.leave_channel_id));
+            }
+            catch (err) {
+                services_1.logger.warn(`[Leave] Canal ${config.leave_channel_id} nao encontrado na guild ${guildId}`, { err });
+                return;
+            }
+            if (!channel) {
+                services_1.logger.warn(`[Leave] Canal ${config.leave_channel_id} retornou null na guild ${guildId}`);
+                return;
+            }
             const botPermissions = channel.permissionsFor(guildMember.guild.members.me);
-            if (!botPermissions?.has(discord_js_1.PermissionFlagsBits.SendMessages) || !botPermissions?.has(discord_js_1.PermissionFlagsBits.AttachFiles)) {
+            const hasSend = botPermissions?.has(discord_js_1.PermissionFlagsBits.SendMessages);
+            const hasAttach = botPermissions?.has(discord_js_1.PermissionFlagsBits.AttachFiles);
+            if (!hasSend || !hasAttach) {
+                services_1.logger.warn(`[Leave] Sem permissao em #${channel.name} (guild ${guildId}): send=${hasSend} attach=${hasAttach}`);
                 return;
             }
             const messageText = config.leave_message || 'Adeus {user}!';
             let buffer;
+            // Usa o mesmo banner do welcome — temos so um campo no painel
             try {
-                buffer = await (0, welcome_service_1.generateBanner)(guildMember, messageText, null);
+                buffer = await (0, welcome_service_1.generateBanner)(guildMember, messageText, config.welcome_banner_url, config.welcome_font, 'leave');
             }
             catch (error) {
-                buffer = await (0, welcome_service_1.generateBannerFast)(guildMember, messageText, null);
+                buffer = await (0, welcome_service_1.generateBannerFast)(guildMember, messageText, config.welcome_banner_url, config.welcome_font, 'leave');
             }
             const attachment = new discord_js_1.AttachmentBuilder(buffer, { name: 'leave.png' });
             await channel.send({ files: [attachment] });

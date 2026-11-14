@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkProhibitedWords = checkProhibitedWords;
 exports.checkCaps = checkCaps;
 exports.checkLinks = checkLinks;
+exports.checkMassMentions = checkMassMentions;
+exports.checkAccountAge = checkAccountAge;
 exports.checkFlood = checkFlood;
 exports.checkSpam = checkSpam;
 exports.checkWithAI = checkWithAI;
@@ -31,10 +33,40 @@ function checkCaps(content, threshold = 0.7, minLength = 10) {
     const ratio = capsCount / content.length;
     return ratio >= threshold;
 }
-function checkLinks(content) {
-    // Regex simples para detectar http/https links
-    const linkRegex = /(https?:\/\/[^\s]+)/g;
-    return linkRegex.test(content);
+function checkLinks(content, whitelist = []) {
+    const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|(discord\.gg\/[^\s]+)|(discord\.com\/invite\/[^\s]+)/gi;
+    const matches = content.match(linkRegex);
+    if (!matches || matches.length === 0)
+        return false;
+    // Se houver whitelist configurada, verifica se todos os links encontrados estão autorizados
+    if (whitelist && whitelist.length > 0) {
+        const cleanWhitelist = whitelist.map(w => w.trim().toLowerCase()).filter(Boolean);
+        const hasUnauthorizedLink = matches.some(link => {
+            const lowerLink = link.toLowerCase();
+            return !cleanWhitelist.some(domain => lowerLink.includes(domain));
+        });
+        return hasUnauthorizedLink;
+    }
+    return true;
+}
+function checkMassMentions(message, maxMentions) {
+    if (!maxMentions || maxMentions <= 0)
+        return false;
+    const userCount = message.mentions.users?.size || 0;
+    const roleCount = message.mentions.roles?.size || 0;
+    const everyoneCount = message.mentions.everyone ? 1 : 0;
+    const total = userCount + roleCount + everyoneCount;
+    return total > maxMentions;
+}
+function checkAccountAge(createdAt, minDays) {
+    if (!minDays || minDays <= 0)
+        return { isSuspicious: false, ageDays: 0 };
+    const ageMs = Date.now() - createdAt.getTime();
+    const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+    return {
+        isSuspicious: ageDays < minDays,
+        ageDays
+    };
 }
 function checkFlood(content) {
     // Detecta se a mesma letra ou caractere (ex: AAAAAA ou kkkkkkkk) se repete mais de 9 vezes seguidas

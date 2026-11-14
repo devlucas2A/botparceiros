@@ -30,8 +30,12 @@ ENV NEXTAUTH_URL=https://botparceiros-production.up.railway.app
 # Faz o build do painel Next.js e compila o código Typescript
 RUN npm run build
 
-# A Railway vai injetar a variável PORT, mas deixamos exposto a 3000 como padrão
+# A Railway/Render vai injetar a variável PORT, mas deixamos exposto a 3000 como padrão
 EXPOSE 3000
+
+# Otimiza memória em runtime para caber nos 512 MB do plano Free (Render)
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=220"
 
 # Inicia o projeto através do comando principal que levanta o painel e os bots
 CMD ["npm", "start"]

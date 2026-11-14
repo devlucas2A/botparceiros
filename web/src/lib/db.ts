@@ -19,6 +19,10 @@ export function getPool(): Pool {
                 rejectUnauthorized: false
             }
         });
+
+        pool.on('error', (err) => {
+            console.error('Erro no pool PostgreSQL (Web):', err.message);
+        });
     }
     return pool;
 }

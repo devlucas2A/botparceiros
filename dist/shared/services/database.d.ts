@@ -27,6 +27,12 @@ export interface GuildConfig extends QueryResultRow {
     automod_log_channel?: string | null;
     automod_bypass_roles?: string[];
     automod_ai_enabled?: boolean;
+    automod_link_whitelist?: string[];
+    automod_ignored_channels?: string[];
+    automod_max_mentions?: number;
+    antiraid_enabled?: boolean;
+    antiraid_min_account_age_days?: number;
+    antiraid_action?: 'kick' | 'ban' | 'quarantine';
     ia_enabled?: boolean;
     ia_channel_id?: string | null;
     ia_system_prompt?: string | null;
@@ -50,6 +56,9 @@ export interface GuildConfig extends QueryResultRow {
     ticket_logs_channel_id?: string | null;
     whitelabel_name?: string | null;
     whitelabel_avatar_url?: string | null;
+    default_locale?: string | null;
+    timezone?: string | null;
+    bot_notify_channel?: string | null;
     updated_at: Date;
 }
 export interface AuditLog {
@@ -83,6 +92,7 @@ export declare function getClient(): Promise<PoolClient>;
 export declare function testConnection(): Promise<boolean>;
 export declare function initializeSchema(): Promise<void>;
 export declare function getGuildConfig(guildId: string): Promise<GuildConfig | null>;
+export declare function invalidateGuildConfigCache(guildId: string): Promise<void>;
 export declare function upsertGuildConfig(guildId: string, updates: Partial<Omit<GuildConfig, 'guild_id' | 'updated_at'>>): Promise<GuildConfig>;
 export declare function logAudit(guildId: string, userId: string, action: string, targetId?: string, details?: Record<string, unknown>): Promise<AuditLog>;
 export declare function getAuditLogs(guildId: string, limit?: number, offset?: number): Promise<AuditLog[]>;
@@ -141,17 +151,60 @@ export declare function getTicketsByUser(guildId: string, userId: string): Promi
 export declare function closeTicket(channelId: string): Promise<Ticket | null>;
 export declare function deleteTicket(channelId: string): Promise<boolean>;
 export declare function getOpenTickets(guildId: string): Promise<Ticket[]>;
+export interface TicketTranscript extends QueryResultRow {
+    id: string;
+    guild_id: string;
+    ticket_channel_id?: string | null;
+    ticket_name: string;
+    user_id: string;
+    closed_by_id: string;
+    category: string;
+    summary?: string | null;
+    transcript_html: string;
+    message_count: number;
+    created_at: Date;
+}
+export declare function saveTicketTranscript(data: {
+    id: string;
+    guild_id: string;
+    ticket_channel_id?: string | null;
+    ticket_name: string;
+    user_id: string;
+    closed_by_id: string;
+    category: string;
+    summary?: string | null;
+    transcript_html: string;
+    message_count: number;
+}): Promise<TicketTranscript>;
+export declare function getTicketTranscripts(guildId: string, limit?: number): Promise<TicketTranscript[]>;
+export declare function getTicketTranscriptById(id: string): Promise<TicketTranscript | null>;
 export declare function createSubscription(id: string, userId: string, plan: string, status: string, nextPayment?: Date): Promise<Subscription>;
 export declare function getSubscription(id: string): Promise<Subscription | null>;
 export declare function getSubscriptionByUser(userId: string): Promise<Subscription | null>;
 export declare function updateSubscriptionStatus(id: string, status: string, nextPayment?: Date): Promise<Subscription | null>;
 export declare function createPayment(id: number, subscriptionId: string, amount: number, status: string): Promise<Payment>;
 export declare function getPaymentsBySubscription(subscriptionId: string): Promise<Payment[]>;
+export interface ServerGeneration extends QueryResultRow {
+    id: string;
+    guild_id: string;
+    user_id: string;
+    theme: string;
+    schema: any;
+    role_ids: string[];
+    category_ids: string[];
+    channel_ids: string[];
+    undone: boolean;
+    created_at: Date;
+}
+export declare function saveServerGeneration(id: string, guildId: string, userId: string, theme: string, schema: any, roleIds: string[], categoryIds: string[], channelIds: string[]): Promise<ServerGeneration>;
+export declare function getLastServerGeneration(guildId: string): Promise<ServerGeneration | null>;
+export declare function markServerGenerationUndone(id: string): Promise<void>;
 export declare function closePool(): Promise<void>;
 export declare const database: {
     query: typeof query;
     getClient: typeof getClient;
     testConnection: typeof testConnection;
+    closePool: typeof closePool;
     initializeSchema: typeof initializeSchema;
     getGuildConfig: typeof getGuildConfig;
     upsertGuildConfig: typeof upsertGuildConfig;
@@ -181,13 +234,21 @@ export declare const database: {
     updateSubscriptionStatus: typeof updateSubscriptionStatus;
     createPayment: typeof createPayment;
     getPaymentsBySubscription: typeof getPaymentsBySubscription;
-    closePool: typeof closePool;
-    getPool: typeof getPool;
     createCustomCommand: typeof createCustomCommand;
     getCustomCommands: typeof getCustomCommands;
     getCustomCommand: typeof getCustomCommand;
     deleteCustomCommand: typeof deleteCustomCommand;
     toggleCustomCommand: typeof toggleCustomCommand;
+    saveTicketTranscript: typeof saveTicketTranscript;
+    getTicketTranscripts: typeof getTicketTranscripts;
+    getTicketTranscriptById: typeof getTicketTranscriptById;
+    getKnowledgeBase: typeof getKnowledgeBase;
+    createKnowledgeTopic: typeof createKnowledgeTopic;
+    updateKnowledgeTopic: typeof updateKnowledgeTopic;
+    deleteKnowledgeTopic: typeof deleteKnowledgeTopic;
+    saveServerGeneration: typeof saveServerGeneration;
+    getLastServerGeneration: typeof getLastServerGeneration;
+    markServerGenerationUndone: typeof markServerGenerationUndone;
 };
 export interface CustomCommand extends QueryResultRow {
     id: string;
@@ -206,5 +267,19 @@ export declare function getCustomCommands(guildId: string): Promise<CustomComman
 export declare function getCustomCommand(guildId: string, name: string): Promise<CustomCommand | null>;
 export declare function deleteCustomCommand(id: string): Promise<boolean>;
 export declare function toggleCustomCommand(id: string, enabled: boolean): Promise<CustomCommand | null>;
+export interface KnowledgeBaseTopic extends QueryResultRow {
+    id: string;
+    guild_id: string;
+    topic: string;
+    content: string;
+    tags: string[];
+    created_by?: string | null;
+    created_at: Date;
+    updated_at: Date;
+}
+export declare function getKnowledgeBase(guildId: string): Promise<KnowledgeBaseTopic[]>;
+export declare function createKnowledgeTopic(id: string, guildId: string, topic: string, content: string, tags?: string[], createdBy?: string): Promise<KnowledgeBaseTopic>;
+export declare function updateKnowledgeTopic(id: string, topic: string, content: string, tags?: string[]): Promise<KnowledgeBaseTopic | null>;
+export declare function deleteKnowledgeTopic(id: string): Promise<boolean>;
 export default database;
 //# sourceMappingURL=database.d.ts.map

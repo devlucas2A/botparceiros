@@ -11,10 +11,32 @@ const discord_js_2 = require("discord.js");
 function setupPrivateCallsEvents(client) {
     logger_service_1.logger.info('📞 Módulo Private Calls: Eventos inicializados');
     client.on(discord_js_1.Events.InteractionCreate, async (interaction) => {
-        await exports.PRIVATE_CALLS_EVENTS.onInteractionCreate(interaction);
+        try {
+            await exports.PRIVATE_CALLS_EVENTS.onInteractionCreate(interaction);
+        }
+        catch (err) {
+            logger_service_1.logger.error('[PrivateCalls] Erro no handler de interaction:', { err: err?.message, stack: err?.stack });
+            // Tenta avisar o usuario se a interacao ainda estiver valida
+            try {
+                if (interaction.isChatInputCommand()) {
+                    if (interaction.deferred || interaction.replied) {
+                        await interaction.followUp({ content: '⚠️ Erro ao processar comando. Tente novamente.', ephemeral: true });
+                    }
+                    else {
+                        await interaction.reply({ content: '⚠️ Erro ao processar comando. Tente novamente.', ephemeral: true });
+                    }
+                }
+            }
+            catch { /* interacao ja expirou — apenas loga */ }
+        }
     });
     client.on(discord_js_1.Events.VoiceStateUpdate, async (oldState, newState) => {
-        await exports.PRIVATE_CALLS_EVENTS.onVoiceStateUpdate(oldState, newState);
+        try {
+            await exports.PRIVATE_CALLS_EVENTS.onVoiceStateUpdate(oldState, newState);
+        }
+        catch (err) {
+            logger_service_1.logger.error('[PrivateCalls] Erro no handler de voiceState:', { err: err?.message });
+        }
     });
 }
 exports.PRIVATE_CALLS_EVENTS = {
@@ -45,11 +67,15 @@ exports.PRIVATE_CALLS_EVENTS = {
             return;
         if (interaction.commandName !== 'call')
             return;
+        // CRITICO: defer ANTES de qualquer await pra nao estourar 3s do Discord.
+        // Sem isso, qualquer query lenta (PG cold start, network) faz a
+        // interacao expirar e o deferReply joga Unknown Interaction (10062).
+        await interaction.deferReply({ ephemeral: true });
         const guildId = interaction.guildId;
         const member = interaction.member; // Cast needed for roles
         const config = await database_1.database.getGuildConfig(guildId);
         if (!config?.private_calls_enabled) {
-            await interaction.reply({ content: '❌ O sistema de calls privadas está desativado neste servidor.', ephemeral: true });
+            await interaction.editReply('❌ O sistema de calls privadas está desativado neste servidor.');
             return;
         }
         // Check Allowed Roles
@@ -57,17 +83,16 @@ exports.PRIVATE_CALLS_EVENTS = {
             const hasRole = member.roles.cache.some((r) => config.private_calls_allowed_roles.includes(r.id));
             const isManager = config.private_calls_manager_role && member.roles.cache.has(config.private_calls_manager_role);
             if (!hasRole && !isManager && !member.permissions.has(discord_js_2.PermissionsBitField.Flags.Administrator)) {
-                await interaction.reply({ content: '❌ Você não tem permissão para usar este comando.', ephemeral: true });
+                await interaction.editReply('❌ Você não tem permissão para usar este comando.');
                 return;
             }
         }
         const subcommand = interaction.options.getSubcommand();
         if (subcommand === 'criar') {
             if (!config.private_calls_category_id) {
-                await interaction.reply({ content: '❌ Categoria de calls privadas não configurada.', ephemeral: true });
+                await interaction.editReply('❌ Categoria de calls privadas não configurada.');
                 return;
             }
-            await interaction.deferReply({ ephemeral: true });
             const channel = await private_calls_service_1.PRIVATE_CALLS_SERVICE.createPrivateChannel(interaction.guild, member, config.private_calls_category_id);
             if (channel) {
                 await interaction.editReply(`✅ Call criada com sucesso: ${channel}`);
@@ -80,51 +105,52 @@ exports.PRIVATE_CALLS_EVENTS = {
         // For other commands, ensure user owns the channel (or is manager)
         let call = await database_1.database.getPrivateCallByOwner(guildId, member.id);
         if (!call) {
-            await interaction.reply({ content: '❌ Você não tem uma call ativa. Use `/call criar` primeiro.', ephemeral: true });
+            await interaction.editReply('❌ Você não tem uma call ativa. Use `/call criar` primeiro.');
             return;
         }
         const channel = interaction.guild.channels.cache.get(call.channel_id);
         if (!channel) {
             await database_1.database.deletePrivateCall(call.channel_id);
-            await interaction.reply({ content: '❌ Canal não encontrado (removido do banco).', ephemeral: true });
+            await interaction.editReply('❌ Canal não encontrado (removido do banco).');
             return;
         }
         switch (subcommand) {
-            case 'convidar':
+            case 'convidar': {
                 const userInvite = interaction.options.getUser('usuario');
                 await channel.permissionOverwrites.edit(userInvite.id, {
                     Connect: true,
                     ViewChannel: true
                 });
-                await interaction.reply({ content: `✅ ${userInvite} foi convidado para a call.`, ephemeral: true });
+                await interaction.editReply(`✅ ${userInvite} foi convidado para a call.`);
                 break;
-            case 'expulsar':
+            }
+            case 'expulsar': {
                 const userKick = interaction.options.getUser('usuario');
-                // Remove permission
                 await channel.permissionOverwrites.delete(userKick.id);
-                // Also disconnect if connected
                 const memberToKick = await interaction.guild.members.fetch(userKick.id).catch(() => null);
                 if (memberToKick && memberToKick.voice.channelId === channel.id) {
                     await memberToKick.voice.disconnect();
                 }
-                await interaction.reply({ content: `👋 ${userKick} foi removido da call.`, ephemeral: true });
+                await interaction.editReply(`👋 ${userKick} foi removido da call.`);
                 break;
+            }
             case 'bloquear':
                 await channel.permissionOverwrites.edit(guildId, { Connect: false });
-                await interaction.reply({ content: '🔒 Call bloqueada para novos membros (apenas convidados).', ephemeral: true });
                 await database_1.database.updatePrivateCall(channel.id, { is_open: false });
+                await interaction.editReply('🔒 Call bloqueada para novos membros (apenas convidados).');
                 break;
             case 'desbloquear':
                 await channel.permissionOverwrites.edit(guildId, { Connect: true });
-                await interaction.reply({ content: '🔓 Call desbloqueada para todos.', ephemeral: true });
                 await database_1.database.updatePrivateCall(channel.id, { is_open: true });
+                await interaction.editReply('🔓 Call desbloqueada para todos.');
                 break;
-            case 'limite':
+            case 'limite': {
                 const limit = interaction.options.getInteger('quantidade');
                 await channel.setUserLimit(limit);
-                await interaction.reply({ content: `✅ Limite de usuários definido para ${limit === 0 ? 'ilimitado' : limit}.`, ephemeral: true });
                 await database_1.database.updatePrivateCall(channel.id, { member_limit: limit });
+                await interaction.editReply(`✅ Limite de usuários definido para ${limit === 0 ? 'ilimitado' : limit}.`);
                 break;
+            }
         }
     },
     async onVoiceStateUpdate(oldState, _newState) {

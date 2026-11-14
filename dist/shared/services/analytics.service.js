@@ -64,9 +64,6 @@ async function getAnalytics(guildId, period = 7) {
         return [];
     }
 }
-/**
- * Retorna totais agregados de um guild para um período.
- */
 async function getAnalyticsSummary(guildId, period = 7) {
     try {
         const result = await (0, database_1.query)(`SELECT 

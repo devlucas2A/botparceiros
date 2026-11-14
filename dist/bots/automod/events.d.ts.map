@@ -1,1 +1,1 @@
-{"version":3,"file":"events.d.ts","sourceRoot":"","sources":["../../../src/bots/automod/events.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAgD,MAAM,YAAY,CAAC;AAkFlF,wBAAgB,kBAAkB,CAAC,MAAM,EAAE,MAAM,QAoBhD"}
+{"version":3,"file":"events.d.ts","sourceRoot":"","sources":["../../../src/bots/automod/events.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAwF,MAAM,YAAY,CAAC;AA8F1H,wBAAgB,kBAAkB,CAAC,MAAM,EAAE,MAAM,QA0FhD"}

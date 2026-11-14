@@ -7,7 +7,7 @@
   ],
   "main": "bottickets.js",
   "scripts": {
-    "start": "concurrently \"ts-node src/bots/CoreIA/index.ts\" \"npm run start --workspace=web\"",
+    "start": "concurrently \"node dist/bots/CoreIA/index.js\" \"npm run start --workspace=web\"",
     "dev": "concurrently -n \"BOT,WEB\" -c \"magenta,blue\" \"npm run dev:bot\" \"npm run dev:web\"",
     "dev:bot": "nodemon --exec ts-node src/bots/CoreIA/index.ts",
     "dev:web": "npm run dev --workspace=web",

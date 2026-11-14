@@ -147,7 +147,9 @@ class ConfigService {
      */
     getRedisConfig() {
         return {
-            url: this.getOptional('REDIS_URL')
+            url: this.getOptional('REDIS_URL'),
+            restUrl: this.getOptional('UPSTASH_REDIS_REST_URL'),
+            restToken: this.getOptional('UPSTASH_REDIS_REST_TOKEN')
         };
     }
     /**

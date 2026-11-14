@@ -13,6 +13,7 @@ exports.getClient = getClient;
 exports.testConnection = testConnection;
 exports.initializeSchema = initializeSchema;
 exports.getGuildConfig = getGuildConfig;
+exports.invalidateGuildConfigCache = invalidateGuildConfigCache;
 exports.upsertGuildConfig = upsertGuildConfig;
 exports.logAudit = logAudit;
 exports.getAuditLogs = getAuditLogs;
@@ -34,21 +35,32 @@ exports.getTicketsByUser = getTicketsByUser;
 exports.closeTicket = closeTicket;
 exports.deleteTicket = deleteTicket;
 exports.getOpenTickets = getOpenTickets;
+exports.saveTicketTranscript = saveTicketTranscript;
+exports.getTicketTranscripts = getTicketTranscripts;
+exports.getTicketTranscriptById = getTicketTranscriptById;
 exports.createSubscription = createSubscription;
 exports.getSubscription = getSubscription;
 exports.getSubscriptionByUser = getSubscriptionByUser;
 exports.updateSubscriptionStatus = updateSubscriptionStatus;
 exports.createPayment = createPayment;
 exports.getPaymentsBySubscription = getPaymentsBySubscription;
+exports.saveServerGeneration = saveServerGeneration;
+exports.getLastServerGeneration = getLastServerGeneration;
+exports.markServerGenerationUndone = markServerGenerationUndone;
 exports.closePool = closePool;
 exports.createCustomCommand = createCustomCommand;
 exports.getCustomCommands = getCustomCommands;
 exports.getCustomCommand = getCustomCommand;
 exports.deleteCustomCommand = deleteCustomCommand;
 exports.toggleCustomCommand = toggleCustomCommand;
+exports.getKnowledgeBase = getKnowledgeBase;
+exports.createKnowledgeTopic = createKnowledgeTopic;
+exports.updateKnowledgeTopic = updateKnowledgeTopic;
+exports.deleteKnowledgeTopic = deleteKnowledgeTopic;
 const pg_1 = require("pg");
 const config_service_1 = require("./config.service");
 const logger_service_1 = require("./logger.service");
+const redis_service_1 = require("./redis.service");
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔗 CONNECTION POOL
 // ═══════════════════════════════════════════════════════════════════════════
@@ -232,6 +244,24 @@ CREATE INDEX IF NOT EXISTS idx_tickets_guild ON tickets(guild_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_user ON tickets(user_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_channel ON tickets(channel_id);
 
+-- Ticket Transcripts Table (HTML & AI Summary)
+CREATE TABLE IF NOT EXISTS ticket_transcripts (
+    id VARCHAR(64) PRIMARY KEY,
+    guild_id VARCHAR(20) NOT NULL,
+    ticket_channel_id VARCHAR(20),
+    ticket_name VARCHAR(100) NOT NULL,
+    user_id VARCHAR(20),
+    closed_by_id VARCHAR(20),
+    category VARCHAR(100),
+    summary TEXT,
+    transcript_html TEXT NOT NULL,
+    message_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ticket_transcripts_guild ON ticket_transcripts(guild_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_transcripts_created ON ticket_transcripts(created_at);
+
 -- Ticket Categories Table (New)
 CREATE TABLE IF NOT EXISTS ticket_categories (
     id VARCHAR(50) PRIMARY KEY,
@@ -285,6 +315,20 @@ CREATE TABLE IF NOT EXISTS guild_analytics (
 );
 
 CREATE INDEX IF NOT EXISTS idx_guild_analytics_guild ON guild_analytics(guild_id);
+
+-- Guild Knowledge Base (RAG / FAQs customizados para IA)
+CREATE TABLE IF NOT EXISTS guild_knowledge_base (
+    id VARCHAR(50) PRIMARY KEY,
+    guild_id VARCHAR(20) NOT NULL,
+    topic VARCHAR(120) NOT NULL,
+    content TEXT NOT NULL,
+    tags TEXT[] DEFAULT '{}',
+    created_by VARCHAR(20),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_guild_knowledge_guild ON guild_knowledge_base(guild_id);
  
 -- Partnerships
 CREATE TABLE IF NOT EXISTS partnerships (
@@ -323,6 +367,22 @@ CREATE TABLE IF NOT EXISTS server_generation_usage (
     count INTEGER DEFAULT 0,
     PRIMARY KEY (user_id, month_year)
 );
+
+-- Server Generations (Historico para suporte a undo)
+CREATE TABLE IF NOT EXISTS server_generations (
+    id UUID PRIMARY KEY,
+    guild_id VARCHAR(20) NOT NULL,
+    user_id VARCHAR(20) NOT NULL,
+    theme TEXT NOT NULL,
+    schema JSONB NOT NULL,
+    role_ids TEXT[] DEFAULT '{}',
+    category_ids TEXT[] DEFAULT '{}',
+    channel_ids TEXT[] DEFAULT '{}',
+    undone BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_server_generations_guild ON server_generations(guild_id, created_at DESC);
 `;
 async function initializeSchema() {
     try {
@@ -367,7 +427,20 @@ async function initializeSchema() {
                 ADD COLUMN IF NOT EXISTS automod_ai_enabled BOOLEAN DEFAULT false,
                 ADD COLUMN IF NOT EXISTS whitelabel_name VARCHAR(32),
                 ADD COLUMN IF NOT EXISTS ia_triggers TEXT[] DEFAULT '{}',
-                ADD COLUMN IF NOT EXISTS whitelabel_avatar_url VARCHAR(255);
+                ADD COLUMN IF NOT EXISTS whitelabel_avatar_url VARCHAR(255),
+
+                -- Settings page (preferences gerais)
+                ADD COLUMN IF NOT EXISTS default_locale VARCHAR(5) DEFAULT 'pt',
+                ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'America/Sao_Paulo',
+                ADD COLUMN IF NOT EXISTS bot_notify_channel VARCHAR(20),
+
+                -- AutoMod Whitelist & Anti-Raid
+                ADD COLUMN IF NOT EXISTS automod_link_whitelist TEXT[] DEFAULT '{}',
+                ADD COLUMN IF NOT EXISTS automod_ignored_channels TEXT[] DEFAULT '{}',
+                ADD COLUMN IF NOT EXISTS automod_max_mentions INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS antiraid_enabled BOOLEAN DEFAULT false,
+                ADD COLUMN IF NOT EXISTS antiraid_min_account_age_days INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS antiraid_action VARCHAR(20) DEFAULT 'kick';
             `);
             // Ticket Migration
             await query(`
@@ -411,9 +484,60 @@ async function initializeSchema() {
 // ═══════════════════════════════════════════════════════════════════════════
 // 📊 GUILD CONFIG OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════════
+// Cache em memória como fallback rápido
+const memoryGuildCache = new Map();
+const CACHE_TTL_SECONDS = 300; // 5 minutos
 async function getGuildConfig(guildId) {
+    // 1. Tentar ler do Cache (Redis ou Memória)
+    try {
+        const redis = redis_service_1.redisService.getClient();
+        if (redis) {
+            const cached = await redis.get(`guild_config:${guildId}`);
+            if (cached) {
+                return JSON.parse(cached);
+            }
+        }
+        else {
+            const mem = memoryGuildCache.get(guildId);
+            if (mem && mem.expires > Date.now()) {
+                return mem.data;
+            }
+        }
+    }
+    catch {
+        // Fallback silencioso para o banco
+    }
+    // 2. Buscar no PostgreSQL
     const result = await query('SELECT * FROM guild_configs WHERE guild_id = $1', [guildId]);
-    return result.rows[0] || null;
+    const configData = result.rows[0] || null;
+    // 3. Salvar no Cache
+    if (configData) {
+        try {
+            const redis = redis_service_1.redisService.getClient();
+            if (redis) {
+                await redis.set(`guild_config:${guildId}`, JSON.stringify(configData), 'EX', CACHE_TTL_SECONDS);
+            }
+            else {
+                memoryGuildCache.set(guildId, { data: configData, expires: Date.now() + (CACHE_TTL_SECONDS * 1000) });
+            }
+        }
+        catch {
+            // Ignora erro de gravação no cache
+        }
+    }
+    return configData;
+}
+async function invalidateGuildConfigCache(guildId) {
+    memoryGuildCache.delete(guildId);
+    try {
+        const redis = redis_service_1.redisService.getClient();
+        if (redis) {
+            await redis.del(`guild_config:${guildId}`);
+        }
+    }
+    catch {
+        // Ignora erro
+    }
 }
 // Whitelist de colunas permitidas para prevenir SQL Injection
 const GUILD_CONFIG_COLUMNS = new Set([
@@ -429,7 +553,12 @@ const GUILD_CONFIG_COLUMNS = new Set([
     'ticket_panel_color', 'ticket_panel_button_text', 'ticket_panel_button_emoji', 'ticket_panel_footer',
     'ticket_logs_channel_id',
     'automod_ai_enabled',
-    'whitelabel_name', 'whitelabel_avatar_url'
+    'whitelabel_name', 'whitelabel_avatar_url',
+    // Settings page (preferences gerais)
+    'default_locale', 'timezone', 'bot_notify_channel',
+    // AutoMod Whitelist & Anti-Raid
+    'automod_link_whitelist', 'automod_ignored_channels', 'automod_max_mentions',
+    'antiraid_enabled', 'antiraid_min_account_age_days', 'antiraid_action'
 ]);
 const PRIVATE_CALL_COLUMNS = new Set(['is_open', 'member_limit', 'owner_id']);
 const TICKET_CATEGORY_COLUMNS = new Set([
@@ -453,6 +582,8 @@ async function upsertGuildConfig(guildId, updates) {
         RETURNING *
     `;
     const result = await query(sql, [guildId, ...values]);
+    // Invalida cache após atualizar
+    await invalidateGuildConfigCache(guildId);
     return result.rows[0];
 }
 // ═══════════════════════════════════════════════════════════════════════════
@@ -568,6 +699,25 @@ async function getOpenTickets(guildId) {
     const result = await query(`SELECT * FROM tickets WHERE guild_id = $1 AND status = 'open' ORDER BY created_at DESC`, [guildId]);
     return result.rows;
 }
+async function saveTicketTranscript(data) {
+    const result = await query(`INSERT INTO ticket_transcripts (id, guild_id, ticket_channel_id, ticket_name, user_id, closed_by_id, category, summary, transcript_html, message_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (id) DO UPDATE SET transcript_html = EXCLUDED.transcript_html, summary = EXCLUDED.summary
+         RETURNING *`, [data.id, data.guild_id, data.ticket_channel_id || null, data.ticket_name, data.user_id, data.closed_by_id, data.category, data.summary || null, data.transcript_html, data.message_count]);
+    return result.rows[0];
+}
+async function getTicketTranscripts(guildId, limit = 50) {
+    const result = await query(`SELECT id, guild_id, ticket_channel_id, ticket_name, user_id, closed_by_id, category, summary, message_count, created_at 
+         FROM ticket_transcripts 
+         WHERE guild_id = $1 
+         ORDER BY created_at DESC 
+         LIMIT $2`, [guildId, limit]);
+    return result.rows;
+}
+async function getTicketTranscriptById(id) {
+    const result = await query(`SELECT * FROM ticket_transcripts WHERE id = $1`, [id]);
+    return result.rows[0] || null;
+}
 // ═══════════════════════════════════════════════════════════════════════════
 // 💳 SUBSCRIPTION OPERATIONS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -603,6 +753,23 @@ async function getPaymentsBySubscription(subscriptionId) {
     const result = await query(`SELECT * FROM payments WHERE subscription_id = $1 ORDER BY created_at DESC`, [subscriptionId]);
     return result.rows;
 }
+async function saveServerGeneration(id, guildId, userId, theme, schema, roleIds, categoryIds, channelIds) {
+    const result = await query(`INSERT INTO server_generations
+         (id, guild_id, user_id, theme, schema, role_ids, category_ids, channel_ids)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`, [id, guildId, userId, theme, JSON.stringify(schema), roleIds, categoryIds, channelIds]);
+    return result.rows[0];
+}
+async function getLastServerGeneration(guildId) {
+    const result = await query(`SELECT * FROM server_generations
+         WHERE guild_id = $1 AND undone = false
+         ORDER BY created_at DESC
+         LIMIT 1`, [guildId]);
+    return result.rows[0] || null;
+}
+async function markServerGenerationUndone(id) {
+    await query(`UPDATE server_generations SET undone = true WHERE id = $1`, [id]);
+}
 // ═══════════════════════════════════════════════════════════════════════════
 // 🧹 CLEANUP
 // ═══════════════════════════════════════════════════════════════════════════
@@ -618,6 +785,7 @@ exports.database = {
     query,
     getClient,
     testConnection,
+    closePool,
     initializeSchema,
     getGuildConfig,
     upsertGuildConfig,
@@ -652,15 +820,25 @@ exports.database = {
     // Payments
     createPayment,
     getPaymentsBySubscription,
-    // Cleanup
-    closePool,
-    getPool,
     // Custom Commands
     createCustomCommand,
     getCustomCommands,
     getCustomCommand,
     deleteCustomCommand,
-    toggleCustomCommand
+    toggleCustomCommand,
+    // Ticket Transcripts
+    saveTicketTranscript,
+    getTicketTranscripts,
+    getTicketTranscriptById,
+    // Knowledge Base
+    getKnowledgeBase,
+    createKnowledgeTopic,
+    updateKnowledgeTopic,
+    deleteKnowledgeTopic,
+    // Server Generations
+    saveServerGeneration,
+    getLastServerGeneration,
+    markServerGenerationUndone
 };
 async function createCustomCommand(id, guildId, name, description, response, actions, createdBy, options = []) {
     const result = await query(`INSERT INTO custom_commands (id, guild_id, name, description, response, actions, created_by, options)
@@ -683,6 +861,27 @@ async function deleteCustomCommand(id) {
 async function toggleCustomCommand(id, enabled) {
     const result = await query('UPDATE custom_commands SET enabled = $2 WHERE id = $1 RETURNING *', [id, enabled]);
     return result.rows[0] || null;
+}
+async function getKnowledgeBase(guildId) {
+    const result = await query('SELECT * FROM guild_knowledge_base WHERE guild_id = $1 ORDER BY created_at DESC', [guildId]);
+    return result.rows;
+}
+async function createKnowledgeTopic(id, guildId, topic, content, tags = [], createdBy) {
+    const result = await query(`INSERT INTO guild_knowledge_base (id, guild_id, topic, content, tags, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`, [id, guildId, topic, content, tags, createdBy || null]);
+    return result.rows[0];
+}
+async function updateKnowledgeTopic(id, topic, content, tags = []) {
+    const result = await query(`UPDATE guild_knowledge_base 
+         SET topic = $2, content = $3, tags = $4, updated_at = NOW() 
+         WHERE id = $1 
+         RETURNING *`, [id, topic, content, tags]);
+    return result.rows[0] || null;
+}
+async function deleteKnowledgeTopic(id) {
+    const result = await query('DELETE FROM guild_knowledge_base WHERE id = $1', [id]);
+    return (result.rowCount ?? 0) > 0;
 }
 exports.default = exports.database;
 //# sourceMappingURL=database.js.map

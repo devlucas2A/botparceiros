@@ -43,6 +43,8 @@ export interface DatabaseConfig {
 
 export interface RedisConfig {
     url?: string;
+    restUrl?: string;
+    restToken?: string;
 }
 
 export class ConfigService {
@@ -156,7 +158,9 @@ export class ConfigService {
      */
     getRedisConfig(): RedisConfig {
         return {
-            url: this.getOptional('REDIS_URL')
+            url: this.getOptional('REDIS_URL'),
+            restUrl: this.getOptional('UPSTASH_REDIS_REST_URL'),
+            restToken: this.getOptional('UPSTASH_REDIS_REST_TOKEN')
         };
     }
 

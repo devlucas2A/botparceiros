@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.THEME = void 0;
 exports.sendTicketPanel = sendTicketPanel;
@@ -235,38 +268,68 @@ async function handleTicketClaim(interaction) {
     await channel.setTopic(`Assumido por: ${member.user.tag}`).catch(() => { });
 }
 /**
- * Gera o transcript e fecha o ticket.
+ * Gera o transcript visual em HTML com IA e fecha o ticket.
  */
 async function closeTicketProcess(channel, guild, closedBy, categoryName) {
     const messages = await channel.messages.fetch({ limit: 100 });
     const sortedMessages = [...messages.values()].reverse();
-    let transcript = `TRANSCRIPT DO TICKET\n`;
-    transcript += `Canal: ${channel.name}\n`;
-    transcript += `Fechado por: ${closedBy.user.tag}\n`;
-    transcript += `Categoria: ${categoryName}\n`;
-    transcript += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
-    transcript += `------------------------------------------------\n\n`;
-    for (const msg of sortedMessages) {
-        const time = msg.createdAt.toLocaleString('pt-BR');
-        const author = msg.author.tag;
-        const content = msg.content || '[Conteúdo não textual]';
-        const attachments = msg.attachments.size > 0 ? ` [${msg.attachments.size} anexo(s)]` : '';
-        transcript += `[${time}] ${author}: ${content}${attachments}\n`;
+    // 1. Resumo Inteligente por IA (se disponível)
+    let aiSummary = null;
+    try {
+        const { llmService } = await Promise.resolve().then(() => __importStar(require('../../shared/services/llm.service')));
+        if (llmService && llmService.isReady() && sortedMessages.length >= 2) {
+            const conversationText = sortedMessages
+                .map(m => `${m.author.username}: ${m.content || '[Anexo/Mídia]'}`)
+                .join('\n')
+                .slice(0, 3000);
+            aiSummary = await llmService.generateResponse([{ role: 'user', content: conversationText }], "Você é um assistente de suporte. Resuma este chamado de suporte em 3 tópicos curtos: 📌 Motivo, ✅ Solução/Andamento e ⭐ Sentimento do cliente.");
+        }
     }
+    catch (err) {
+        services_1.logger.warn('Não foi possível gerar resumo de IA do ticket', { error: err });
+    }
+    // 2. Gerar Transcript Visual em HTML
+    const { generateHtmlTranscript } = await Promise.resolve().then(() => __importStar(require('../../shared/services/transcript-generator')));
+    const { saveTicketTranscript } = await Promise.resolve().then(() => __importStar(require('../../shared/services/database')));
+    const transcriptId = `tr_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const transcriptHtml = generateHtmlTranscript({
+        guild,
+        channelName: channel.name,
+        closedBy,
+        category: categoryName,
+        summary: aiSummary,
+        messages: sortedMessages
+    });
+    // 3. Salvar no Banco de Dados
+    await saveTicketTranscript({
+        id: transcriptId,
+        guild_id: guild.id,
+        ticket_channel_id: channel.id,
+        ticket_name: channel.name,
+        user_id: getTicketOwnerIdFromTopic(channel) || closedBy.id,
+        closed_by_id: closedBy.id,
+        category: categoryName,
+        summary: aiSummary,
+        transcript_html: transcriptHtml,
+        message_count: sortedMessages.length
+    }).catch(err => services_1.logger.error('Erro ao salvar transcript no banco', { error: err }));
+    // 4. Enviar para Canal de Logs no Discord
     const guildConfig = await (0, services_1.getGuildConfig)(guild.id);
-    // Prioridade: Canal de Logs de Ticket > Canal de Logs Geral
     const logChannelId = guildConfig?.ticket_logs_channel_id || guildConfig?.logs_channel_id;
     if (logChannelId) {
         const logsChannel = guild.channels.cache.get(logChannelId);
         if (logsChannel) {
             try {
-                const buffer = Buffer.from(transcript, 'utf8');
-                const attachment = new discord_js_1.AttachmentBuilder(buffer, { name: `transcript-${channel.name}.txt` });
+                const buffer = Buffer.from(transcriptHtml, 'utf8');
+                const attachment = new discord_js_1.AttachmentBuilder(buffer, { name: `transcript-${channel.name}.html` });
                 const logEmbed = new discord_js_1.EmbedBuilder()
                     .setColor(exports.THEME.colors.info)
-                    .setTitle(`${exports.THEME.emojis.log} Ticket Fechado`)
-                    .addFields({ name: 'Ticket', value: channel.name, inline: true }, { name: 'Fechado por', value: `${closedBy.user} (${closedBy.user.tag})`, inline: true }, { name: 'Categoria', value: categoryName, inline: true }, { name: 'Dono do Ticket', value: `<@${getTicketOwnerIdFromTopic(channel) || 'Desconhecido'}>`, inline: true })
+                    .setTitle(`${exports.THEME.emojis.log} Ticket Fechado & Transcrição Gerada`)
+                    .addFields({ name: 'Ticket', value: channel.name, inline: true }, { name: 'Fechado por', value: `${closedBy.user} (${closedBy.user.tag})`, inline: true }, { name: 'Categoria', value: categoryName, inline: true }, { name: 'Total de Mensagens', value: `${sortedMessages.length}`, inline: true }, { name: 'ID do Transcript', value: `\`${transcriptId}\``, inline: true })
                     .setTimestamp();
+                if (aiSummary) {
+                    logEmbed.addFields({ name: '🤖 Resumo por IA', value: aiSummary.slice(0, 1024), inline: false });
+                }
                 await logsChannel.send({ embeds: [logEmbed], files: [attachment] });
             }
             catch (error) {
@@ -275,7 +338,7 @@ async function closeTicketProcess(channel, guild, closedBy, categoryName) {
         }
     }
     await (0, services_1.closeTicket)(channel.id);
-    await (0, services_1.logAudit)(guild.id, closedBy.id, 'TICKET_CLOSED', channel.id, { category: categoryName });
+    await (0, services_1.logAudit)(guild.id, closedBy.id, 'TICKET_CLOSED', channel.id, { category: categoryName, transcript_id: transcriptId });
     (0, analytics_service_1.trackEvent)(guild.id, 'ticket_close').catch(() => { });
     setTimeout(() => {
         channel.delete().catch(() => { });

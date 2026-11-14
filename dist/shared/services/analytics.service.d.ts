@@ -29,8 +29,5 @@ export declare function trackEvent(guildId: string, event: AnalyticsEvent, count
  * @param period - Número de dias para trás (7, 14, 30, 90)
  */
 export declare function getAnalytics(guildId: string, period?: number): Promise<GuildAnalytics[]>;
-/**
- * Retorna totais agregados de um guild para um período.
- */
 export declare function getAnalyticsSummary(guildId: string, period?: number): Promise<Partial<GuildAnalytics> | null>;
 //# sourceMappingURL=analytics.service.d.ts.map
