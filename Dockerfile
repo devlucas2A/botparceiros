@@ -24,8 +24,8 @@ RUN npm install
 # Copia todo o resto do código da sua máquina para o container
 COPY . .
 
-# Garante que NEXTAUTH_URL está definido para produção (Railway env vars vão sobrescrever se definidas)
-ENV NEXTAUTH_URL=https://botparceiros-production.up.railway.app
+# Garante que NEXTAUTH_URL está definido para produção (Render env vars vão sobrescrever se definidas)
+ENV NEXTAUTH_URL=https://corebot-tdte.onrender.com
 
 # Faz o build do painel Next.js e compila o código Typescript
 RUN npm run build
