@@ -22,8 +22,13 @@ const authMiddleware = withAuth(
 );
 
 export default async function middleware(req: NextRequest) {
-    const publicPathnameRegex = /^\/(?:en|pt)?(?:\/)?$/;
-    const isPublicPage = publicPathnameRegex.test(req.nextUrl.pathname);
+    const { pathname } = req.nextUrl;
+
+    // Páginas públicas (Landing Page e Documentação pública)
+    const isPublicPage =
+        pathname === '/' ||
+        /^\/(?:en|pt)?(?:\/)?$/.test(pathname) ||
+        /^\/(?:en|pt)?\/?docs(?:\/.*)?$/.test(pathname);
 
     let response: NextResponse;
 
@@ -39,7 +44,16 @@ export default async function middleware(req: NextRequest) {
     if (response && response.status >= 300 && response.status < 400) {
         let location = response.headers.get('location');
         if (location) {
-            const prodUrl = process.env.NEXTAUTH_URL;
+            const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim() || req.headers.get('host')?.split(',')[0]?.trim();
+            const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
+            const isValidForwardedHost =
+                forwardedHost &&
+                !forwardedHost.includes('localhost') &&
+                !forwardedHost.includes('127.0.0.1') &&
+                !forwardedHost.includes(':8080');
+            const prodUrl = isValidForwardedHost
+                ? `${forwardedProto}://${forwardedHost}`
+                : process.env.NEXTAUTH_URL;
             const isLocalhost = location.includes('localhost') || location.includes('127.0.0.1');
             const hasPort = location.includes(':8080');
 

@@ -26,6 +26,7 @@ COPY . .
 
 # Garante que NEXTAUTH_URL está definido para produção (Render env vars vão sobrescrever se definidas)
 ENV NEXTAUTH_URL=https://corebot-ia.duckdns.org
+ENV AUTH_TRUST_HOST=true
 
 # Faz o build do painel Next.js e compila o código Typescript
 RUN npm run build

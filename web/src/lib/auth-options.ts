@@ -6,6 +6,7 @@ export const authOptions: NextAuthOptions = {
         DiscordProvider({
             clientId: process.env.DISCORD_CLIENT_ID ?? "",
             clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
+            issuer: "https://discord.com/api/oauth2",
             authorization: { params: { scope: 'identify email guilds' } },
         }),
     ],
