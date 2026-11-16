@@ -514,7 +514,7 @@ async function resolvePlayableUrl(track: Track): Promise<string> {
     return track.url;
 }
 
-async function extractDirectStreamUrl(targetUrl: string): Promise<string | null> {
+async function extractDirectStreamUrl(targetUrl: string, fallbackQuery?: string): Promise<string | null> {
     const cached = streamUrlCache.get(targetUrl);
     if (cached && cached.expiresAt > Date.now()) {
         return cached.streamUrl;
@@ -524,11 +524,14 @@ async function extractDirectStreamUrl(targetUrl: string): Promise<string | null>
     if (existing) return existing;
 
     const promise = (async () => {
-        const attempts: string[][] = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')
+        const isYouTube = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be');
+        const attempts: string[][] = isYouTube
             ? [
-                  ['--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android', '-f', 'bestaudio/best', '--get-url', targetUrl],
-                  ['--js-runtimes', 'node', '--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=visionos', '-f', 'bestaudio[ext=webm]/bestaudio/best', '--get-url', targetUrl],
-                  ['--js-runtimes', 'node', '--no-warnings', '--no-playlist', '-f', 'bestaudio[ext=webm]/bestaudio/best', '--get-url', targetUrl]
+                  ['--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android,ios', '-f', 'bestaudio/best', '--get-url', targetUrl],
+                  ['--js-runtimes', 'node', '--no-warnings', '--no-playlist', '-f', 'bestaudio[ext=webm]/bestaudio/best', '--get-url', targetUrl],
+                  ...(fallbackQuery
+                      ? [['--no-warnings', '--no-playlist', '-f', 'bestaudio/best', '--get-url', `scsearch1:${fallbackQuery}`]]
+                      : [])
               ]
             : [
                   ['--no-warnings', '--no-playlist', '-f', 'bestaudio/best', '--get-url', targetUrl]
@@ -541,7 +544,8 @@ async function extractDirectStreamUrl(targetUrl: string): Promise<string | null>
                     maxBuffer: 2 * 1024 * 1024
                 });
                 const directUrl = stdout.trim().split(/\r?\n/)[0]?.trim();
-                if (directUrl && isHttpUrl(directUrl) && !directUrl.includes('.m3u8')) {
+                const isYoutubeHls = Boolean(directUrl && directUrl.includes('googlevideo.com') && directUrl.includes('.m3u8'));
+                if (directUrl && isHttpUrl(directUrl) && !isYoutubeHls) {
                     streamUrlCache.set(targetUrl, {
                         streamUrl: directUrl,
                         expiresAt: Date.now() + STREAM_CACHE_TTL_MS
@@ -567,7 +571,7 @@ async function extractDirectStreamUrl(targetUrl: string): Promise<string | null>
 export function prewarmTrack(track: Track | undefined): void {
     if (!track || track.source === 'direct') return;
     resolvePlayableUrl(track)
-        .then(url => extractDirectStreamUrl(url))
+        .then(url => extractDirectStreamUrl(url, track.title))
         .catch(() => {});
 }
 
@@ -660,14 +664,23 @@ export async function createAudioStream(track: Track): Promise<AudioResource> {
     const playableUrl = await resolvePlayableUrl(track);
 
     // 2. Caminho rápido: extrai URL direta e verifica se FFmpeg entrega áudio sem erro 403/timeout
-    const directStreamUrl = await extractDirectStreamUrl(playableUrl);
+    const directStreamUrl = await extractDirectStreamUrl(playableUrl, track.title);
     if (directStreamUrl) {
         const directResource = await createVerifiedHttpPcmResource(directStreamUrl, track);
         if (directResource) {
             return directResource;
         }
-        // Limpa cache se a URL falhou no FFmpeg
+        // Limpa cache se a URL falhou no FFmpeg e tenta fallback via SoundCloud se era YouTube
         streamUrlCache.delete(playableUrl);
+        if (playableUrl.includes('youtube.com') || playableUrl.includes('youtu.be')) {
+            const scStreamUrl = await extractDirectStreamUrl(`scsearch1:${track.title}`);
+            if (scStreamUrl) {
+                const scResource = await createVerifiedHttpPcmResource(scStreamUrl, track);
+                if (scResource) {
+                    return scResource;
+                }
+            }
+        }
     }
 
     // 3. Fallback robusto: pipe direto do yt-dlp -> FFmpeg

@@ -50,14 +50,23 @@ export class MusicManager {
         const queue = this.queues.get(guildId);
         if (!queue) return;
 
-        // Se o próprio bot foi desconectado
+        // Se o próprio bot foi desconectado ou outra instância assumiu a sessão
         const botId = newState.client.user?.id;
         if (botId && (oldState.id === botId || newState.id === botId)) {
             if (!newState.channelId) {
                 logger.info(`[MusicManager] Bot desconectado do canal de voz na guild ${guildId}`);
-                queue.destroy();
+                queue.destroy(false);
                 return;
-            } else if (newState.channel) {
+            }
+
+            const myShardSessionId = (newState.guild.shard as any)?.sessionId;
+            if (myShardSessionId && newState.sessionId && newState.sessionId !== myShardSessionId) {
+                logger.info(`[MusicManager] Outra instância ativa assumiu a voz na guild ${guildId}. Liberando fila local sem desconectar.`);
+                queue.destroy(false);
+                return;
+            }
+
+            if (newState.channel) {
                 queue.voiceChannel = newState.channel;
             }
         }

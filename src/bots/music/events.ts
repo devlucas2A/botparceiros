@@ -2,9 +2,58 @@ import { Client, EmbedBuilder, Message } from 'discord.js';
 import { findMusicCommand } from './commands';
 import { MusicCommand } from './types';
 import { musicManager } from './music.manager';
-import { logger } from '../../shared/services';
+import { logger, redisService } from '../../shared/services';
 
 let musicEventsRegistered = false;
+const claimedMessageIds = new Set<string>();
+
+function rememberClaimedMessage(messageId: string): void {
+    claimedMessageIds.add(messageId);
+    if (claimedMessageIds.size > 500) {
+        const oldest = claimedMessageIds.values().next().value;
+        if (oldest) claimedMessageIds.delete(oldest);
+    }
+}
+
+async function tryClaimMusicCommand(message: Message): Promise<boolean> {
+    const isCloudInstance = Boolean(
+        process.env.RENDER ||
+        process.env.RAILWAY_ENVIRONMENT ||
+        process.env.NODE_ENV === 'production'
+    );
+
+    // Se estiver rodando na nuvem (Render), aguarda 450ms para dar prioridade
+    // a uma eventual instância local de desenvolvimento e evitar colisão de voz
+    if (isCloudInstance) {
+        await new Promise(resolve => setTimeout(resolve, 450));
+    }
+
+    if (claimedMessageIds.has(message.id)) {
+        return false;
+    }
+
+    const redis = redisService.getClient();
+    if (redis) {
+        try {
+            const lockKey = `music:cmd:lock:${message.id}`;
+            const count = await redis.incr(lockKey);
+            if (count === 1) {
+                await redis.expire(lockKey, 60);
+            } else if (count > 1) {
+                return false;
+            }
+        } catch {
+            // Se Redis falhar, segue com verificação via Gateway
+        }
+    }
+
+    if (claimedMessageIds.has(message.id)) {
+        return false;
+    }
+
+    rememberClaimedMessage(message.id);
+    return true;
+}
 
 /**
  * Faz o parsing de uma mensagem com o prefixo core!
@@ -51,6 +100,12 @@ export function setupMusicEvents(client: Client): void {
 
     // Interceptação de mensagens com prefixo core!
     client.on('messageCreate', async (message: Message) => {
+        // Se outra instância do próprio bot já respondeu a um comando, registra para evitar duplicidade
+        if (message.author.id === client.user?.id && message.reference?.messageId) {
+            rememberClaimedMessage(message.reference.messageId);
+            return;
+        }
+
         if (message.author.bot || !message.guild) return;
 
         const parsed = parseMusicCommand(message.content);
@@ -58,6 +113,12 @@ export function setupMusicEvents(client: Client): void {
 
         const member = message.member;
         if (!member) return;
+
+        const claimed = await tryClaimMusicCommand(message);
+        if (!claimed) {
+            logger.info(`[MusicEvents] Comando ${message.id} já processado por outra instância ativa. Ignorando.`);
+            return;
+        }
 
         if (!parsed.command) {
             const embed = new EmbedBuilder()

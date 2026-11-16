@@ -22,6 +22,7 @@ export declare class GuildQueue {
     private setupPlayerListeners;
     safeSend(options: any): void;
     connect(): VoiceConnection;
+    private ensureVoiceReady;
     enqueue(tracks: Track | Track[]): void;
     playNext(): Promise<boolean>;
     private handleTrackEnd;
@@ -35,6 +36,6 @@ export declare class GuildQueue {
     clearIdleTimer(): void;
     clearEmptyTimer(): void;
     private sendNowPlayingEmbed;
-    destroy(): void;
+    destroy(sendLeavePayload?: boolean): void;
 }
 //# sourceMappingURL=guild-queue.d.ts.map

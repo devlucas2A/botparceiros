@@ -81,7 +81,10 @@ export class GuildQueue {
         });
 
         this.player.on('error', (error) => {
-            logger.error(`[GuildQueue] Erro no player da guild ${this.guildId}:`, { error });
+            logger.error(`[GuildQueue] Erro no player da guild ${this.guildId}: ${error?.message || String(error)}`, {
+                name: error?.name,
+                stack: error?.stack
+            });
             const embed = new EmbedBuilder()
                 .setColor(0xED4245)
                 .setDescription(`⚠️ Erro na reprodução: ${error.message}. Avançando para a próxima faixa...`);
@@ -109,17 +112,25 @@ export class GuildQueue {
 
             this.connection.on('stateChange', (oldState, newState) => {
                 logger.info(`[GuildQueue] Voice (${this.guildId}): ${oldState.status} -> ${newState.status}`);
+                if (this.connection && this.connection.rejoinAttempts > 4) {
+                    logger.warn(`[GuildQueue] Limite de reconexões de voz excedido na guild ${this.guildId} (possível conflito de instância). Encerrando fila local sem desconectar sessão remota.`);
+                    this.destroy(false);
+                }
             });
 
-            this.connection.on('error', (error) => {
-                logger.error(`[GuildQueue] Erro na conexão de voz da guild ${this.guildId}:`, { error });
+            this.connection.on('error', (error: Error) => {
+                logger.warn(`[GuildQueue] Aviso na conexão de voz da guild ${this.guildId}: ${error?.message || String(error)}`, {
+                    name: error?.name,
+                    code: (error as any)?.code
+                });
             });
 
             this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
+                if (!this.connection || this.isDestroyed) return;
                 try {
                     await Promise.race([
-                        entersState(this.connection!, VoiceConnectionStatus.Signalling, 5000),
-                        entersState(this.connection!, VoiceConnectionStatus.Connecting, 5000)
+                        entersState(this.connection, VoiceConnectionStatus.Signalling, 5000),
+                        entersState(this.connection, VoiceConnectionStatus.Connecting, 5000)
                     ]);
                 } catch {
                     this.destroy();
@@ -127,11 +138,32 @@ export class GuildQueue {
             });
 
             this.connection.on(VoiceConnectionStatus.Destroyed, () => {
-                this.destroy();
+                this.destroy(false);
             });
         }
 
         return this.connection;
+    }
+
+    private async ensureVoiceReady(connection: VoiceConnection): Promise<void> {
+        if (connection.state.status === VoiceConnectionStatus.Ready) {
+            return;
+        }
+
+        try {
+            await entersState(connection, VoiceConnectionStatus.Ready, 12_000);
+        } catch {
+            if (this.isDestroyed || connection.state.status === VoiceConnectionStatus.Destroyed) {
+                throw new Error('Conexão de voz encerrada');
+            }
+            logger.warn(`[GuildQueue] Timeout inicial de voz na guild ${this.guildId} (status=${connection.state.status}). Tentando rejoin...`);
+            connection.rejoin({
+                channelId: this.voiceChannel.id,
+                selfDeaf: true,
+                selfMute: false
+            });
+            await entersState(connection, VoiceConnectionStatus.Ready, 12_000);
+        }
     }
 
     public enqueue(tracks: Track | Track[]): void {
@@ -158,12 +190,13 @@ export class GuildQueue {
 
         try {
             const connection = this.connect();
-            const waitReady =
-                connection.state.status !== VoiceConnectionStatus.Ready
-                    ? entersState(connection, VoiceConnectionStatus.Ready, 15_000)
-                    : Promise.resolve(connection);
+            const [, resource] = await Promise.all([
+                this.ensureVoiceReady(connection),
+                createAudioStream(nextTrack)
+            ]);
 
-            const [, resource] = await Promise.all([waitReady, createAudioStream(nextTrack)]);
+            if (this.isDestroyed) return false;
+
             connection.subscribe(this.player);
             this.player.play(resource);
             this.sendNowPlayingEmbed(nextTrack);
@@ -175,8 +208,12 @@ export class GuildQueue {
 
             return true;
         } catch (error: unknown) {
+            if (this.isDestroyed) return false;
             const err = error as Error;
-            logger.error(`[GuildQueue] Falha ao extrair stream de "${nextTrack.title}":`, { error });
+            logger.error(`[GuildQueue] Falha ao reproduzir "${nextTrack.title}": ${err?.message || String(error)}`, {
+                name: err?.name,
+                stack: err?.stack
+            });
             const embed = new EmbedBuilder()
                 .setColor(0xED4245)
                 .setDescription(`❌ Erro ao reproduzir **${nextTrack.title}**: ${err.message || 'Stream indisponível'}. Pulando...`);
@@ -307,7 +344,7 @@ export class GuildQueue {
         this.safeSend({ embeds: [embed] });
     }
 
-    public destroy(): void {
+    public destroy(sendLeavePayload: boolean = true): void {
         if (this.isDestroyed) return;
         this.isDestroyed = true;
 
@@ -324,7 +361,9 @@ export class GuildQueue {
 
         if (this.connection) {
             try {
-                this.connection.destroy();
+                if (this.connection.state.status !== VoiceConnectionStatus.Destroyed) {
+                    this.connection.destroy(sendLeavePayload);
+                }
             } catch {
                 // Ignora se já destruído
             }

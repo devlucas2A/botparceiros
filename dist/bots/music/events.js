@@ -7,6 +7,49 @@ const commands_1 = require("./commands");
 const music_manager_1 = require("./music.manager");
 const services_1 = require("../../shared/services");
 let musicEventsRegistered = false;
+const claimedMessageIds = new Set();
+function rememberClaimedMessage(messageId) {
+    claimedMessageIds.add(messageId);
+    if (claimedMessageIds.size > 500) {
+        const oldest = claimedMessageIds.values().next().value;
+        if (oldest)
+            claimedMessageIds.delete(oldest);
+    }
+}
+async function tryClaimMusicCommand(message) {
+    const isCloudInstance = Boolean(process.env.RENDER ||
+        process.env.RAILWAY_ENVIRONMENT ||
+        process.env.NODE_ENV === 'production');
+    // Se estiver rodando na nuvem (Render), aguarda 450ms para dar prioridade
+    // a uma eventual instância local de desenvolvimento e evitar colisão de voz
+    if (isCloudInstance) {
+        await new Promise(resolve => setTimeout(resolve, 450));
+    }
+    if (claimedMessageIds.has(message.id)) {
+        return false;
+    }
+    const redis = services_1.redisService.getClient();
+    if (redis) {
+        try {
+            const lockKey = `music:cmd:lock:${message.id}`;
+            const count = await redis.incr(lockKey);
+            if (count === 1) {
+                await redis.expire(lockKey, 60);
+            }
+            else if (count > 1) {
+                return false;
+            }
+        }
+        catch {
+            // Se Redis falhar, segue com verificação via Gateway
+        }
+    }
+    if (claimedMessageIds.has(message.id)) {
+        return false;
+    }
+    rememberClaimedMessage(message.id);
+    return true;
+}
 /**
  * Faz o parsing de uma mensagem com o prefixo core!
  * Retorna o comando correspondente e seus argumentos, ou null se não tiver o prefixo.
@@ -46,6 +89,11 @@ function setupMusicEvents(client) {
     services_1.logger.info(`🌌 Módulo Music (pid ${process.pid}): Eventos inicializados (messageCreate + voiceStateUpdate)`);
     // Interceptação de mensagens com prefixo core!
     client.on('messageCreate', async (message) => {
+        // Se outra instância do próprio bot já respondeu a um comando, registra para evitar duplicidade
+        if (message.author.id === client.user?.id && message.reference?.messageId) {
+            rememberClaimedMessage(message.reference.messageId);
+            return;
+        }
         if (message.author.bot || !message.guild)
             return;
         const parsed = parseMusicCommand(message.content);
@@ -54,6 +102,11 @@ function setupMusicEvents(client) {
         const member = message.member;
         if (!member)
             return;
+        const claimed = await tryClaimMusicCommand(message);
+        if (!claimed) {
+            services_1.logger.info(`[MusicEvents] Comando ${message.id} já processado por outra instância ativa. Ignorando.`);
+            return;
+        }
         if (!parsed.command) {
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor(0xED4245)

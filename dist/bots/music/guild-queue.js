@@ -56,7 +56,10 @@ class GuildQueue {
             });
         });
         this.player.on('error', (error) => {
-            services_1.logger.error(`[GuildQueue] Erro no player da guild ${this.guildId}:`, { error });
+            services_1.logger.error(`[GuildQueue] Erro no player da guild ${this.guildId}: ${error?.message || String(error)}`, {
+                name: error?.name,
+                stack: error?.stack
+            });
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor(0xED4245)
                 .setDescription(`⚠️ Erro na reprodução: ${error.message}. Avançando para a próxima faixa...`);
@@ -80,11 +83,20 @@ class GuildQueue {
             this.connection.subscribe(this.player);
             this.connection.on('stateChange', (oldState, newState) => {
                 services_1.logger.info(`[GuildQueue] Voice (${this.guildId}): ${oldState.status} -> ${newState.status}`);
+                if (this.connection && this.connection.rejoinAttempts > 4) {
+                    services_1.logger.warn(`[GuildQueue] Limite de reconexões de voz excedido na guild ${this.guildId} (possível conflito de instância). Encerrando fila local sem desconectar sessão remota.`);
+                    this.destroy(false);
+                }
             });
             this.connection.on('error', (error) => {
-                services_1.logger.error(`[GuildQueue] Erro na conexão de voz da guild ${this.guildId}:`, { error });
+                services_1.logger.warn(`[GuildQueue] Aviso na conexão de voz da guild ${this.guildId}: ${error?.message || String(error)}`, {
+                    name: error?.name,
+                    code: error?.code
+                });
             });
             this.connection.on(voice_1.VoiceConnectionStatus.Disconnected, async () => {
+                if (!this.connection || this.isDestroyed)
+                    return;
                 try {
                     await Promise.race([
                         (0, voice_1.entersState)(this.connection, voice_1.VoiceConnectionStatus.Signalling, 5000),
@@ -96,10 +108,30 @@ class GuildQueue {
                 }
             });
             this.connection.on(voice_1.VoiceConnectionStatus.Destroyed, () => {
-                this.destroy();
+                this.destroy(false);
             });
         }
         return this.connection;
+    }
+    async ensureVoiceReady(connection) {
+        if (connection.state.status === voice_1.VoiceConnectionStatus.Ready) {
+            return;
+        }
+        try {
+            await (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 12_000);
+        }
+        catch {
+            if (this.isDestroyed || connection.state.status === voice_1.VoiceConnectionStatus.Destroyed) {
+                throw new Error('Conexão de voz encerrada');
+            }
+            services_1.logger.warn(`[GuildQueue] Timeout inicial de voz na guild ${this.guildId} (status=${connection.state.status}). Tentando rejoin...`);
+            connection.rejoin({
+                channelId: this.voiceChannel.id,
+                selfDeaf: true,
+                selfMute: false
+            });
+            await (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 12_000);
+        }
     }
     enqueue(tracks) {
         if (Array.isArray(tracks)) {
@@ -123,10 +155,12 @@ class GuildQueue {
         this.currentTrack = nextTrack;
         try {
             const connection = this.connect();
-            const waitReady = connection.state.status !== voice_1.VoiceConnectionStatus.Ready
-                ? (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 15_000)
-                : Promise.resolve(connection);
-            const [, resource] = await Promise.all([waitReady, (0, extractor_1.createAudioStream)(nextTrack)]);
+            const [, resource] = await Promise.all([
+                this.ensureVoiceReady(connection),
+                (0, extractor_1.createAudioStream)(nextTrack)
+            ]);
+            if (this.isDestroyed)
+                return false;
             connection.subscribe(this.player);
             this.player.play(resource);
             this.sendNowPlayingEmbed(nextTrack);
@@ -137,8 +171,13 @@ class GuildQueue {
             return true;
         }
         catch (error) {
+            if (this.isDestroyed)
+                return false;
             const err = error;
-            services_1.logger.error(`[GuildQueue] Falha ao extrair stream de "${nextTrack.title}":`, { error });
+            services_1.logger.error(`[GuildQueue] Falha ao reproduzir "${nextTrack.title}": ${err?.message || String(error)}`, {
+                name: err?.name,
+                stack: err?.stack
+            });
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor(0xED4245)
                 .setDescription(`❌ Erro ao reproduzir **${nextTrack.title}**: ${err.message || 'Stream indisponível'}. Pulando...`);
@@ -251,7 +290,7 @@ class GuildQueue {
         }
         this.safeSend({ embeds: [embed] });
     }
-    destroy() {
+    destroy(sendLeavePayload = true) {
         if (this.isDestroyed)
             return;
         this.isDestroyed = true;
@@ -267,7 +306,9 @@ class GuildQueue {
         }
         if (this.connection) {
             try {
-                this.connection.destroy();
+                if (this.connection.state.status !== voice_1.VoiceConnectionStatus.Destroyed) {
+                    this.connection.destroy(sendLeavePayload);
+                }
             }
             catch {
                 // Ignora se já destruído
