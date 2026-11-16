@@ -21,9 +21,13 @@ exports.createAudioStream = createAudioStream;
  *   3) Fallback CDN Deezer caso ambas as fontes primárias falhem em IP de nuvem
  */
 const stream_1 = require("stream");
+const child_process_1 = require("child_process");
+const util_1 = require("util");
 const voice_1 = require("@discordjs/voice");
 const prism_media_1 = __importDefault(require("prism-media"));
 const services_1 = require("../../shared/services");
+const execFileAsync = (0, util_1.promisify)(child_process_1.execFile);
+const YTDLP_BIN = process.env.YTDLP_PATH || 'yt-dlp';
 const HTTP_TIMEOUT_MS = 6000;
 const FFMPEG_READY_TIMEOUT_MS = 7000;
 const SEARCH_CACHE_TTL_MS = 30 * 60 * 1000;
@@ -357,10 +361,30 @@ async function findChunkedAudioSource(track) {
         return {
             kind: 'chunked',
             url: String(chosen.url),
+            mediaId,
+            itag: Number(chosen.itag) || 251,
             contentLength,
             userAgent: IOS_UA,
             expiresAt: Date.now() + STREAM_CACHE_TTL_MS
         };
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Desbloqueia em segundo plano a URL completa (sem limite de 512KB/60s) para o mesmo itag
+ * enquanto os primeiros 30 segundos já estão tocando instantaneamente na call.
+ */
+async function unlockFullStreamUrl(mediaId, itag) {
+    if (!mediaId)
+        return null;
+    const formatSelector = itag ? `${itag}/bestaudio/best` : 'bestaudio/best';
+    const targetUrl = `https://www.youtube.com/watch?v=${mediaId}`;
+    try {
+        const { stdout } = await execFileAsync(YTDLP_BIN, ['--js-runtimes', 'node', '--no-warnings', '--no-playlist', '-f', formatSelector, '--get-url', targetUrl], { timeout: 12_000, maxBuffer: 2 * 1024 * 1024 });
+        const directUrl = stdout.trim().split(/\r?\n/)[0]?.trim();
+        return directUrl && isHttpUrl(directUrl) ? directUrl : null;
     }
     catch {
         return null;
@@ -689,8 +713,10 @@ async function createChunkedRangePcmResource(source, track) {
     if (total <= 0)
         return null;
     const ua = source.userAgent || IOS_UA;
-    const firstChunkSize = 256 * 1024;
+    const firstChunkSize = 384 * 1024;
     const firstEnd = Math.min(firstChunkSize - 1, total - 1);
+    // Dispara em paralelo o desbloqueio da URL completa enquanto baixa o primeiro bloco instantâneo
+    const unlockedUrlPromise = unlockFullStreamUrl(source.mediaId, source.itag);
     let firstBuffer;
     try {
         const firstRes = await fetch(source.url, {
@@ -709,19 +735,31 @@ async function createChunkedRangePcmResource(source, track) {
     let aborted = false;
     const chunkStream = stream_1.Readable.from((async function* () {
         yield firstBuffer;
+        const unlockedUrl = await unlockedUrlPromise;
+        const activeUrl = unlockedUrl || source.url;
         const step = 512 * 1024;
         for (let start = firstEnd + 1; start < total && !aborted; start += step) {
             const end = Math.min(start + step - 1, total - 1);
-            const res = await fetch(source.url, {
-                headers: { 'User-Agent': ua, Range: `bytes=${start}-${end}` },
-                signal: AbortSignal.timeout(8000)
-            });
-            if (!res.ok && res.status !== 206)
+            let chunkBuf = null;
+            for (let attempt = 0; attempt < 3 && !aborted; attempt++) {
+                try {
+                    const res = await fetch(activeUrl, {
+                        headers: { 'User-Agent': ua, Range: `bytes=${start}-${end}` },
+                        signal: AbortSignal.timeout(10_000)
+                    });
+                    if (res.ok || res.status === 206) {
+                        chunkBuf = Buffer.from(await res.arrayBuffer());
+                        break;
+                    }
+                }
+                catch {
+                    // tenta novamente
+                }
+                await new Promise(r => setTimeout(r, 250));
+            }
+            if (!chunkBuf || chunkBuf.length === 0)
                 break;
-            const buf = Buffer.from(await res.arrayBuffer());
-            if (buf.length === 0)
-                break;
-            yield buf;
+            yield chunkBuf;
         }
     })());
     const ffmpeg = new prism_media_1.default.FFmpeg({
