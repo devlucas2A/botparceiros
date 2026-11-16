@@ -10,7 +10,7 @@ export declare function formatDuration(seconds: number): string;
  */
 export declare function isDirectAudioUrl(url: string): boolean;
 /**
- * Resolve tracks a partir de uma busca de texto ou link (YouTube, Deezer, Spotify, SoundCloud, Link Direto)
+ * Resolve tracks a partir de uma busca de texto ou link (YouTube, Spotify, Deezer, SoundCloud, Link Direto)
  */
 export declare function resolveTracks(query: string, requestedBy: GuildMember): Promise<Track[]>;
 /**
@@ -18,7 +18,7 @@ export declare function resolveTracks(query: string, requestedBy: GuildMember): 
  */
 export declare function prewarmTrack(track: Track | undefined): void;
 /**
- * Extração rápida do stream de áudio via URL direta (FFmpeg) com fallback para pipe yt-dlp
+ * Extração rápida do stream de áudio via URL direta verificada (FFmpeg) com fallback para pipe yt-dlp
  */
 export declare function createAudioStream(track: Track): Promise<AudioResource>;
 //# sourceMappingURL=extractor.d.ts.map

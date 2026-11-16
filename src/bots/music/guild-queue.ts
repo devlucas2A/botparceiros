@@ -46,7 +46,8 @@ export class GuildQueue {
 
         this.player = createAudioPlayer({
             behaviors: {
-                noSubscriber: NoSubscriberBehavior.Pause
+                noSubscriber: NoSubscriberBehavior.Pause,
+                maxMissedFrames: 250
             }
         });
 
@@ -69,6 +70,10 @@ export class GuildQueue {
     }
 
     private setupPlayerListeners(): void {
+        this.player.on('stateChange', (oldState, newState) => {
+            logger.info(`[GuildQueue] Player (${this.guildId}): ${oldState.status} -> ${newState.status}`);
+        });
+
         this.player.on(AudioPlayerStatus.Idle, () => {
             this.handleTrackEnd().catch(err => {
                 logger.error(`[GuildQueue] Erro ao avançar faixa na guild ${this.guildId}:`, { err });
@@ -101,6 +106,14 @@ export class GuildQueue {
             });
 
             this.connection.subscribe(this.player);
+
+            this.connection.on('stateChange', (oldState, newState) => {
+                logger.info(`[GuildQueue] Voice (${this.guildId}): ${oldState.status} -> ${newState.status}`);
+            });
+
+            this.connection.on('error', (error) => {
+                logger.error(`[GuildQueue] Erro na conexão de voz da guild ${this.guildId}:`, { error });
+            });
 
             this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
                 try {
@@ -151,6 +164,7 @@ export class GuildQueue {
                     : Promise.resolve(connection);
 
             const [, resource] = await Promise.all([waitReady, createAudioStream(nextTrack)]);
+            connection.subscribe(this.player);
             this.player.play(resource);
             this.sendNowPlayingEmbed(nextTrack);
 

@@ -103,7 +103,7 @@ function isHttpUrl(value: string): boolean {
 function detectSource(url: string): Track['source'] {
     const lower = url.toLowerCase();
     if (lower.includes('soundcloud.com')) return 'soundcloud';
-    if (lower.includes('spotify.com')) return 'spotify';
+    if (lower.includes('spotify.com') || lower.includes('spotify.link')) return 'spotify';
     if (lower.includes('deezer.com') || lower.includes('deezer.page.link')) return 'deezer';
     if (isDirectAudioUrl(url)) return 'direct';
     return 'youtube';
@@ -251,17 +251,104 @@ async function resolveDeezerUrl(deezerUrl: string, requestedBy: GuildMember): Pr
     }
 }
 
-async function resolveSpotifyTitle(spotifyUrl: string): Promise<string | null> {
+/**
+ * Resolve faixas, álbuns e playlists do Spotify sem precisar de API Key (~300ms)
+ */
+async function resolveSpotifyUrl(spotifyUrl: string, requestedBy: GuildMember): Promise<Track[]> {
     try {
-        const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(spotifyUrl)}`, {
+        let finalUrl = spotifyUrl;
+        if (spotifyUrl.includes('spotify.link')) {
+            const resp = await fetch(spotifyUrl, { redirect: 'follow', signal: AbortSignal.timeout(5000) });
+            finalUrl = resp.url || spotifyUrl;
+        }
+
+        const match = finalUrl.match(/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist)\/([a-zA-Z0-9]+)/i);
+        if (match) {
+            const [, kind, id] = match;
+            const embedRes = await fetch(`https://open.spotify.com/embed/${kind.toLowerCase()}/${id}`, {
+                signal: AbortSignal.timeout(6000)
+            });
+
+            if (embedRes.ok) {
+                const html = await embedRes.text();
+                const idx = html.indexOf('__NEXT_DATA__');
+                if (idx !== -1) {
+                    const start = html.indexOf('>', idx) + 1;
+                    const end = html.indexOf('</script>', start);
+                    if (start > 0 && end > start) {
+                        const parsed = JSON.parse(html.slice(start, end)) as any;
+                        const entity = parsed?.props?.pageProps?.state?.data?.entity;
+
+                        if (kind.toLowerCase() === 'track' && (entity?.name || entity?.title)) {
+                            const titleName = entity.name || entity.title;
+                            const artists = Array.isArray(entity.artists)
+                                ? entity.artists.map((a: any) => a.name).filter(Boolean).join(', ')
+                                : (entity.subtitle || 'Spotify');
+                            const durationSeconds = entity.duration ? Math.round(Number(entity.duration) / 1000) : 0;
+                            const cover = entity.visualIdentity?.image?.[0]?.url || entity.coverArt?.sources?.[0]?.url;
+
+                            return [{
+                                id: String(id),
+                                title: artists && artists !== 'Spotify' ? `${titleName} - ${artists}` : titleName,
+                                url: `https://open.spotify.com/track/${id}`,
+                                duration: durationSeconds > 0 ? formatDuration(durationSeconds) : '00:00',
+                                durationSeconds,
+                                thumbnail: cover,
+                                author: artists || 'Spotify',
+                                requestedBy,
+                                source: 'spotify'
+                            }];
+                        }
+
+                        if (Array.isArray(entity?.trackList) && entity.trackList.length > 0) {
+                            const cover = entity.coverArt?.sources?.[0]?.url;
+                            return entity.trackList.slice(0, 50).map((item: any, index: number) => {
+                                const artist = String(item.subtitle || '').replace(/\u00A0/g, ' ').trim() || 'Spotify';
+                                const titleName = String(item.title || `Faixa ${index + 1}`).trim();
+                                const durationSeconds = item.duration ? Math.round(Number(item.duration) / 1000) : 0;
+                                const trackUriId = typeof item.uri === 'string' ? item.uri.split(':').pop() : `${id}-${index}`;
+
+                                return {
+                                    id: String(trackUriId || `${id}-${index}`),
+                                    title: `${titleName} - ${artist}`,
+                                    url: trackUriId ? `https://open.spotify.com/track/${trackUriId}` : finalUrl,
+                                    duration: durationSeconds > 0 ? formatDuration(durationSeconds) : '00:00',
+                                    durationSeconds,
+                                    thumbnail: cover,
+                                    author: artist,
+                                    requestedBy,
+                                    source: 'spotify' as const
+                                };
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback oEmbed para links simples de música no Spotify
+        const res = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(finalUrl)}`, {
             signal: AbortSignal.timeout(5000)
         });
-        if (!res.ok) return null;
-        const data = (await res.json()) as { title?: string; author_name?: string };
-        if (!data.title) return null;
-        return data.author_name ? `${data.title} ${data.author_name}` : data.title;
-    } catch {
-        return null;
+        if (!res.ok) return [];
+        const data = (await res.json()) as { title?: string; author_name?: string; thumbnail_url?: string };
+        if (!data.title) return [];
+        const title = data.author_name ? `${data.title} - ${data.author_name}` : data.title;
+        return [{
+            id: finalUrl,
+            title,
+            url: finalUrl,
+            duration: '00:00',
+            durationSeconds: 0,
+            thumbnail: data.thumbnail_url,
+            author: data.author_name || 'Spotify',
+            requestedBy,
+            source: 'spotify'
+        }];
+    } catch (error: unknown) {
+        const err = error as Error;
+        logger.warn(`[MusicExtractor] Falha ao resolver Spotify URL: ${err.message}`);
+        return [];
     }
 }
 
@@ -285,7 +372,7 @@ async function runYtDlpJson(target: string, isPlaylistUrl = false): Promise<YtDl
 }
 
 /**
- * Resolve tracks a partir de uma busca de texto ou link (YouTube, Deezer, Spotify, SoundCloud, Link Direto)
+ * Resolve tracks a partir de uma busca de texto ou link (YouTube, Spotify, Deezer, SoundCloud, Link Direto)
  */
 export async function resolveTracks(query: string, requestedBy: GuildMember): Promise<Track[]> {
     const trimmed = query.trim();
@@ -313,17 +400,18 @@ export async function resolveTracks(query: string, requestedBy: GuildMember): Pr
     }
 
     try {
-        // 2. Link do Deezer (Track, Álbum ou Playlist via API pública rápida)
-        if (isHttpUrl(trimmed) && (trimmed.toLowerCase().includes('deezer.com') || trimmed.toLowerCase().includes('deezer.page.link'))) {
-            const deezerTracks = await resolveDeezerUrl(trimmed, requestedBy);
-            if (deezerTracks.length > 0) return deezerTracks;
+        const lower = trimmed.toLowerCase();
+
+        // 2. Link do Spotify (faixa, álbum ou playlist)
+        if (isHttpUrl(trimmed) && (lower.includes('open.spotify.com') || lower.includes('spotify.link'))) {
+            const spotifyTracks = await resolveSpotifyUrl(trimmed, requestedBy);
+            if (spotifyTracks.length > 0) return spotifyTracks;
         }
 
-        // 3. Link do Spotify -> resolve nome via oEmbed e busca no YouTube rápido
-        if (isHttpUrl(trimmed) && trimmed.toLowerCase().includes('open.spotify.com')) {
-            const titleQuery = await resolveSpotifyTitle(trimmed);
-            if (!titleQuery) return [];
-            return resolveTracks(titleQuery, requestedBy);
+        // 3. Link do Deezer (faixa, álbum ou playlist)
+        if (isHttpUrl(trimmed) && (lower.includes('deezer.com') || lower.includes('deezer.page.link'))) {
+            const deezerTracks = await resolveDeezerUrl(trimmed, requestedBy);
+            if (deezerTracks.length > 0) return deezerTracks;
         }
 
         // 4. URL direta (YouTube vídeo/playlist, SoundCloud etc.)
@@ -343,7 +431,7 @@ export async function resolveTracks(query: string, requestedBy: GuildMember): Pr
         }
 
         // 5. Cache rápido de busca textual
-        const cacheKey = trimmed.toLowerCase();
+        const cacheKey = lower;
         const cached = searchCache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now()) {
             return [{
@@ -438,6 +526,7 @@ async function extractDirectStreamUrl(targetUrl: string): Promise<string | null>
     const promise = (async () => {
         const attempts: string[][] = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')
             ? [
+                  ['--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=android', '-f', 'bestaudio/best', '--get-url', targetUrl],
                   ['--js-runtimes', 'node', '--no-warnings', '--no-playlist', '--extractor-args', 'youtube:player_client=visionos', '-f', 'bestaudio[ext=webm]/bestaudio/best', '--get-url', targetUrl],
                   ['--js-runtimes', 'node', '--no-warnings', '--no-playlist', '-f', 'bestaudio[ext=webm]/bestaudio/best', '--get-url', targetUrl]
               ]
@@ -482,7 +571,10 @@ export function prewarmTrack(track: Track | undefined): void {
         .catch(() => {});
 }
 
-function createFfmpegHttpResource(streamUrl: string, track: Track): AudioResource {
+/**
+ * Aguarda até o stream buffered ter os primeiros bytes PCM prontos (garante que o FFmpeg abriu sem erro 403)
+ */
+async function createVerifiedHttpPcmResource(streamUrl: string, track: Track): Promise<AudioResource | null> {
     const ffmpeg = new prism.FFmpeg({
         args: [
             '-reconnect', '1',
@@ -490,37 +582,95 @@ function createFfmpegHttpResource(streamUrl: string, track: Track): AudioResourc
             '-reconnect_delay_max', '5',
             '-i', streamUrl,
             '-analyzeduration', '0',
-            '-loglevel', '0',
+            '-loglevel', 'error',
             '-f', 's16le',
             '-ar', '48000',
             '-ac', '2'
         ]
     });
 
-    return createAudioResource(ffmpeg, {
+    const buffered = new PassThrough({ highWaterMark: 1024 * 1024 });
+    ffmpeg.pipe(buffered);
+
+    const ready = await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const finish = (ok: boolean) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(ok);
+        };
+
+        const timer = setTimeout(() => finish(false), 6000);
+
+        buffered.once('readable', () => finish(true));
+        ffmpeg.once('error', (err) => {
+            logger.warn(`[MusicExtractor] Erro FFmpeg HTTP em "${track.title}": ${err.message}`);
+            finish(false);
+        });
+        ffmpeg.once('close', () => finish(false));
+    });
+
+    if (!ready) {
+        try {
+            ffmpeg.destroy();
+            buffered.destroy();
+        } catch {
+            // ignora
+        }
+        return null;
+    }
+
+    ffmpeg.on('error', (err) => {
+        logger.warn(`[MusicExtractor] FFmpeg stream error em "${track.title}": ${err.message}`);
+    });
+
+    return createAudioResource(buffered, {
         inputType: StreamType.Raw,
         metadata: track
     });
 }
 
 /**
- * Extração rápida do stream de áudio via URL direta (FFmpeg) com fallback para pipe yt-dlp
+ * Extração rápida do stream de áudio via URL direta verificada (FFmpeg) com fallback para pipe yt-dlp
  */
 export async function createAudioStream(track: Track): Promise<AudioResource> {
     // 1. Áudio Direto via FFmpeg
     if (track.source === 'direct') {
-        return createFfmpegHttpResource(track.url, track);
+        const ffmpeg = new prism.FFmpeg({
+            args: [
+                '-reconnect', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '5',
+                '-i', track.url,
+                '-analyzeduration', '0',
+                '-loglevel', 'error',
+                '-f', 's16le',
+                '-ar', '48000',
+                '-ac', '2'
+            ]
+        });
+
+        return createAudioResource(ffmpeg, {
+            inputType: StreamType.Raw,
+            metadata: track
+        });
     }
 
     const playableUrl = await resolvePlayableUrl(track);
 
-    // 2. Caminho rápido: extrai URL direta do stream (cacheada/pré-aquecida) e envia ao FFmpeg
+    // 2. Caminho rápido: extrai URL direta e verifica se FFmpeg entrega áudio sem erro 403/timeout
     const directStreamUrl = await extractDirectStreamUrl(playableUrl);
     if (directStreamUrl) {
-        return createFfmpegHttpResource(directStreamUrl, track);
+        const directResource = await createVerifiedHttpPcmResource(directStreamUrl, track);
+        if (directResource) {
+            return directResource;
+        }
+        // Limpa cache se a URL falhou no FFmpeg
+        streamUrlCache.delete(playableUrl);
     }
 
-    // 3. Fallback robusto: pipe direto do yt-dlp -> FFmpeg (para streams HLS/fragmentados)
+    // 3. Fallback robusto: pipe direto do yt-dlp -> FFmpeg
     const ytdlp = spawn(
         YTDLP_BIN,
         [
@@ -538,14 +688,14 @@ export async function createAudioStream(track: Track): Promise<AudioResource> {
         args: [
             '-i', 'pipe:0',
             '-analyzeduration', '0',
-            '-loglevel', '0',
+            '-loglevel', 'error',
             '-f', 's16le',
             '-ar', '48000',
             '-ac', '2'
         ]
     });
 
-    const output = new PassThrough();
+    const output = new PassThrough({ highWaterMark: 1024 * 1024 });
     let stderrLogs = '';
 
     ytdlp.stderr.on('data', (chunk: Buffer) => {

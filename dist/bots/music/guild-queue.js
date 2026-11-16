@@ -28,7 +28,8 @@ class GuildQueue {
         this.onDeleteCallback = onDelete;
         this.player = (0, voice_1.createAudioPlayer)({
             behaviors: {
-                noSubscriber: voice_1.NoSubscriberBehavior.Pause
+                noSubscriber: voice_1.NoSubscriberBehavior.Pause,
+                maxMissedFrames: 250
             }
         });
         this.setupPlayerListeners();
@@ -46,6 +47,9 @@ class GuildQueue {
         return 0;
     }
     setupPlayerListeners() {
+        this.player.on('stateChange', (oldState, newState) => {
+            services_1.logger.info(`[GuildQueue] Player (${this.guildId}): ${oldState.status} -> ${newState.status}`);
+        });
         this.player.on(voice_1.AudioPlayerStatus.Idle, () => {
             this.handleTrackEnd().catch(err => {
                 services_1.logger.error(`[GuildQueue] Erro ao avançar faixa na guild ${this.guildId}:`, { err });
@@ -74,6 +78,12 @@ class GuildQueue {
                 selfDeaf: true
             });
             this.connection.subscribe(this.player);
+            this.connection.on('stateChange', (oldState, newState) => {
+                services_1.logger.info(`[GuildQueue] Voice (${this.guildId}): ${oldState.status} -> ${newState.status}`);
+            });
+            this.connection.on('error', (error) => {
+                services_1.logger.error(`[GuildQueue] Erro na conexão de voz da guild ${this.guildId}:`, { error });
+            });
             this.connection.on(voice_1.VoiceConnectionStatus.Disconnected, async () => {
                 try {
                     await Promise.race([
@@ -117,6 +127,7 @@ class GuildQueue {
                 ? (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 15_000)
                 : Promise.resolve(connection);
             const [, resource] = await Promise.all([waitReady, (0, extractor_1.createAudioStream)(nextTrack)]);
+            connection.subscribe(this.player);
             this.player.play(resource);
             this.sendNowPlayingEmbed(nextTrack);
             // Pré-aquece a próxima faixa da fila para troca instantânea
