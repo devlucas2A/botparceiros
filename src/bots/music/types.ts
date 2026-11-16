@@ -17,6 +17,8 @@ export interface Track {
     artist?: string;
     /** Nome da música sem o artista */
     songTitle?: string;
+    /** URL de áudio de fallback da CDN do Deezer */
+    previewUrl?: string;
 }
 
 export interface GuildQueueState {

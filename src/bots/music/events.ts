@@ -17,6 +17,19 @@ function rememberClaimedMessage(messageId: string): void {
 }
 
 async function tryClaimMusicCommand(message: Message): Promise<boolean> {
+    const isCloudInstance = Boolean(
+        process.env.RENDER ||
+        process.env.RENDER_SERVICE_ID ||
+        process.env.RAILWAY_ENVIRONMENT ||
+        process.platform !== 'win32'
+    );
+
+    // Na nuvem (Render/Linux), aguarda 500ms para que a instância local (Windows)
+    // sempre vença o lock no Upstash Redis (~130ms de latência BR -> US)
+    if (isCloudInstance) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
     if (claimedMessageIds.has(message.id)) {
         return false;
     }

@@ -10,12 +10,12 @@ export declare function formatDuration(seconds: number): string;
  */
 export declare function isDirectAudioUrl(url: string): boolean;
 /**
- * Retorna true para links que não são suportados (YouTube, SoundCloud, etc.).
+ * Retorna true para links que não são suportados (ex: YouTube).
  * Aceitamos apenas nome da música, Spotify, Deezer e links diretos de áudio.
  */
 export declare function isUnsupportedMusicUrl(query: string): boolean;
 /**
- * Pré-carrega o client_id do SoundCloud para a primeira música tocar sem atraso
+ * Inicializa as fontes de áudio do módulo de música
  */
 export declare function warmupMusicSources(): void;
 /**
@@ -23,7 +23,7 @@ export declare function warmupMusicSources(): void;
  */
 export declare function resolveTracks(query: string, requestedBy: GuildMember): Promise<Track[]>;
 /**
- * Pré-aquece a faixa em segundo plano para a troca ser instantânea
+ * Pré-aquece a faixa em segundo plano para a reprodução começar instantaneamente
  */
 export declare function prewarmTrack(track: Track | undefined): void;
 /**

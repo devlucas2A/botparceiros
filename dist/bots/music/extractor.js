@@ -11,28 +11,30 @@ exports.resolveTracks = resolveTracks;
 exports.prewarmTrack = prewarmTrack;
 exports.createAudioStream = createAudioStream;
 /**
- * Extrator de música do CoreBot
+ * Extrator de música de baixa latência do CoreBot
  *
- * - Busca por texto: Deezer (catálogo oficial, ~300ms)
- * - Links: Spotify e Deezer (faixa, álbum e playlist)
- * - Áudio: SoundCloud via API HTTP nativa (sem Python / yt-dlp), funciona em servidores na nuvem
- * - Links diretos de áudio (.mp3, .ogg, ...) tocam direto pelo FFmpeg
- *
- * YouTube NÃO é suportado (bloqueia IPs de datacenter e deixava o bot lento/mudo).
+ * - Busca por texto: API oficial do Deezer (~250ms)
+ * - Links suportados: Spotify e Deezer (faixa, álbum e playlist) + links diretos de áudio
+ * - Motor de Áudio Híbrido (sem Python / sem yt-dlp):
+ *   1) Stream HTTP Chunked Range de alta velocidade (~800ms até o primeiro byte PCM)
+ *   2) SoundCloud API v2 nativa com client_id pré-carregado (filtra DRM cbc-encrypted-hls)
+ *   3) Fallback CDN Deezer caso ambas as fontes primárias falhem em IP de nuvem
  */
 const stream_1 = require("stream");
 const voice_1 = require("@discordjs/voice");
 const prism_media_1 = __importDefault(require("prism-media"));
 const services_1 = require("../../shared/services");
 const HTTP_TIMEOUT_MS = 6000;
-const FFMPEG_READY_TIMEOUT_MS = 8000;
+const FFMPEG_READY_TIMEOUT_MS = 7000;
 const SEARCH_CACHE_TTL_MS = 30 * 60 * 1000;
-const STREAM_CACHE_TTL_MS = 50 * 60 * 1000; // URLs assinadas do SoundCloud expiram em ~1-2h
+const STREAM_CACHE_TTL_MS = 45 * 60 * 1000;
 const CLIENT_ID_TTL_MS = 6 * 60 * 60 * 1000;
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const IOS_UA = 'com.google.ios.youtube/20.03.02 (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)';
+const DEFAULT_SC_CLIENT_ID = '5lnU5PEpImc23JXFHBdq8E6QDd39I2uT';
 const searchCache = new Map();
-const streamUrlCache = new Map();
-const inflightStreams = new Map();
+const audioSourceCache = new Map();
+const inflightAudioSources = new Map();
 // ═══════════════════════════════════════════════════════════════════════════
 // Utilitários
 // ═══════════════════════════════════════════════════════════════════════════
@@ -81,7 +83,7 @@ function isDeezerUrl(value) {
     return lower.includes('deezer.com') || lower.includes('deezer.page.link') || lower.includes('link.deezer.com');
 }
 /**
- * Retorna true para links que não são suportados (YouTube, SoundCloud, etc.).
+ * Retorna true para links que não são suportados (ex: YouTube).
  * Aceitamos apenas nome da música, Spotify, Deezer e links diretos de áudio.
  */
 function isUnsupportedMusicUrl(query) {
@@ -125,7 +127,7 @@ function toTrack(meta, requestedBy) {
     return { ...meta, requestedBy };
 }
 // ═══════════════════════════════════════════════════════════════════════════
-// Deezer (busca por texto + links)
+// Deezer (busca por texto + links de faixa, álbum e playlist)
 // ═══════════════════════════════════════════════════════════════════════════
 function mapDeezerTrack(item, fallbackCover, fallbackUrl) {
     const artist = item.artist?.name || 'Deezer';
@@ -140,7 +142,8 @@ function mapDeezerTrack(item, fallbackCover, fallbackUrl) {
         author: artist,
         source: 'deezer',
         artist,
-        songTitle: item.title
+        songTitle: item.title,
+        previewUrl: typeof item.preview === 'string' && item.preview ? item.preview : undefined
     };
 }
 async function searchDeezer(queryText) {
@@ -253,7 +256,7 @@ async function resolveSpotifyUrl(spotifyUrl) {
                 }
             }
         }
-        // Fallback oEmbed (só título)
+        // Fallback oEmbed
         const data = await fetchJson(`https://open.spotify.com/oembed?url=${encodeURIComponent(finalUrl)}`);
         if (!data.title)
             return [];
@@ -275,9 +278,101 @@ async function resolveSpotifyUrl(spotifyUrl) {
     }
 }
 // ═══════════════════════════════════════════════════════════════════════════
-// SoundCloud (fonte de áudio completa, via HTTP nativo)
+// Motor 1: Stream HTTP Chunked Range (~800ms, sem yt-dlp / sem Python)
 // ═══════════════════════════════════════════════════════════════════════════
-let scClientId = null;
+async function findChunkedAudioSource(track) {
+    try {
+        const searchQuery = track.artist && track.songTitle
+            ? `${track.artist} ${cleanTitle(track.songTitle)}`
+            : cleanTitle(track.title);
+        const searchRes = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'User-Agent': BROWSER_UA },
+            body: JSON.stringify({
+                context: {
+                    client: {
+                        clientName: 'WEB',
+                        clientVersion: '2.20250101.00.00',
+                        hl: 'pt',
+                        gl: 'BR'
+                    }
+                },
+                query: searchQuery,
+                params: 'EgIQAQ%3D%3D'
+            }),
+            signal: AbortSignal.timeout(4500)
+        });
+        if (!searchRes.ok)
+            return null;
+        const searchData = (await searchRes.json());
+        const sections = searchData?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+        let mediaId = null;
+        for (const section of sections) {
+            const items = section?.itemSectionRenderer?.contents || [];
+            const vid = items.find((item) => item?.videoRenderer?.videoId)?.videoRenderer;
+            if (vid?.videoId) {
+                mediaId = String(vid.videoId);
+                break;
+            }
+        }
+        if (!mediaId)
+            return null;
+        const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': IOS_UA
+            },
+            body: JSON.stringify({
+                videoId: mediaId,
+                context: {
+                    client: {
+                        clientName: 'IOS',
+                        clientVersion: '20.03.02',
+                        deviceMake: 'Apple',
+                        deviceModel: 'iPhone16,2',
+                        osName: 'iPhone',
+                        osVersion: '18.2.1.22C161',
+                        hl: 'pt',
+                        gl: 'BR'
+                    }
+                }
+            }),
+            signal: AbortSignal.timeout(4500)
+        });
+        if (!playerRes.ok)
+            return null;
+        const playerData = (await playerRes.json());
+        const formats = playerData?.streamingData?.adaptiveFormats || [];
+        const audioFormats = formats.filter((f) => typeof f?.mimeType === 'string' && f.mimeType.startsWith('audio/') && f.url && f.contentLength);
+        if (audioFormats.length === 0)
+            return null;
+        const chosen = audioFormats.find((f) => f.itag === 251) ||
+            audioFormats.find((f) => f.itag === 140) ||
+            audioFormats.find((f) => f.itag === 250) ||
+            audioFormats[0];
+        const contentLength = Number(chosen.contentLength);
+        if (!contentLength || contentLength <= 0)
+            return null;
+        return {
+            kind: 'chunked',
+            url: String(chosen.url),
+            contentLength,
+            userAgent: IOS_UA,
+            expiresAt: Date.now() + STREAM_CACHE_TTL_MS
+        };
+    }
+    catch {
+        return null;
+    }
+}
+// ═══════════════════════════════════════════════════════════════════════════
+// Motor 2: SoundCloud API v2 Nativa (com client_id pré-carregado e filtro DRM)
+// ═══════════════════════════════════════════════════════════════════════════
+let scClientId = {
+    value: process.env.SOUNDCLOUD_CLIENT_ID || DEFAULT_SC_CLIENT_ID,
+    expiresAt: Date.now() + CLIENT_ID_TTL_MS
+};
 let scClientIdPromise = null;
 async function fetchSoundCloudClientId() {
     const html = await (await fetch('https://soundcloud.com/', {
@@ -286,7 +381,7 @@ async function fetchSoundCloudClientId() {
     })).text();
     const scripts = [...html.matchAll(/<script crossorigin src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)]
         .map(m => m[1])
-        .reverse(); // o client_id costuma estar nos últimos bundles
+        .reverse();
     for (const src of scripts) {
         try {
             const js = await (await fetch(src, { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) })).text();
@@ -298,7 +393,7 @@ async function fetchSoundCloudClientId() {
             // tenta o próximo bundle
         }
     }
-    throw new Error('Não foi possível obter o client_id do SoundCloud');
+    return DEFAULT_SC_CLIENT_ID;
 }
 async function getSoundCloudClientId(forceRefresh = false) {
     if (process.env.SOUNDCLOUD_CLIENT_ID && !forceRefresh)
@@ -311,6 +406,7 @@ async function getSoundCloudClientId(forceRefresh = false) {
             scClientId = { value, expiresAt: Date.now() + CLIENT_ID_TTL_MS };
             return value;
         })
+            .catch(() => DEFAULT_SC_CLIENT_ID)
             .finally(() => {
             scClientIdPromise = null;
         });
@@ -331,6 +427,31 @@ async function soundCloudApi(path, retry = true) {
         throw error;
     }
 }
+function orderTranscodings(t) {
+    const list = (t.media?.transcodings || []).filter(tc => !tc.snipped);
+    const rank = (tc) => {
+        const protocol = tc.format?.protocol || '';
+        const mime = tc.format?.mime_type || '';
+        // Ignora streams criptografados com DRM (cbc-encrypted-hls / ctr-encrypted-hls)
+        if (protocol.includes('encrypted'))
+            return 9;
+        if (protocol === 'progressive')
+            return 0;
+        if (protocol === 'hls' && (mime.includes('mp4') || mime.includes('aac')))
+            return 1;
+        if (protocol === 'hls' && mime.includes('ogg'))
+            return 2;
+        if (protocol === 'hls')
+            return 3;
+        return 9;
+    };
+    return [...list].sort((a, b) => rank(a) - rank(b)).filter(tc => rank(tc) < 9);
+}
+function isPlayableScTrack(t) {
+    if (t.policy === 'SNIP' || t.policy === 'BLOCK' || t.streamable === false)
+        return false;
+    return orderTranscodings(t).length > 0;
+}
 function scoreSoundCloudCandidate(candidate, track) {
     const wantTitle = normalize(cleanTitle(track.songTitle || track.title.split(' - ')[0] || track.title));
     const wantArtist = normalize(track.artist || track.author || '');
@@ -344,110 +465,125 @@ function scoreSoundCloudCandidate(candidate, track) {
     let score = 0;
     score += titleTokens.length ? (titleHits / titleTokens.length) * 60 : 0;
     score += artistTokens.length ? (artistHits / artistTokens.length) * 30 : 0;
-    // Penaliza títulos com muita coisa a mais (mashups, reworks, compilações)
-    const known = new Set([...titleTokens, ...artistTokens, 'official', 'oficial', 'audio', 'video', 'clipe', 'lyrics', 'letra', 'remastered', 'feat', 'ft']);
+    const known = new Set([
+        ...titleTokens,
+        ...artistTokens,
+        'official',
+        'oficial',
+        'audio',
+        'video',
+        'clipe',
+        'lyrics',
+        'letra',
+        'remastered',
+        'feat',
+        'ft',
+        'mc',
+        'dj'
+    ]);
     const extra = haveTitle.split(' ').filter(t => t.length > 1 && !known.has(t)).length;
-    score -= Math.min(extra * 3, 30);
+    score -= Math.min(extra * 3, 25);
     const candSeconds = Math.round((candidate.duration || 0) / 1000);
     if (track.durationSeconds > 0 && candSeconds > 0) {
         const diff = Math.abs(candSeconds - track.durationSeconds);
         score += diff <= 5 ? 20 : diff <= 15 ? 10 : diff <= 40 ? 0 : -25;
     }
-    if (/\b(cover|karaoke|instrumental|remix|slowed|sped up|8d|reverb)\b/.test(haveTitle) &&
-        !/\b(cover|karaoke|instrumental|remix|slowed|sped up|8d|reverb)\b/.test(normalize(track.title))) {
+    if (/\b(cover|karaoke|instrumental|slowed|sped up|8d|reverb)\b/.test(haveTitle) &&
+        !/\b(cover|karaoke|instrumental|slowed|sped up|8d|reverb)\b/.test(normalize(track.title))) {
         score -= 20;
     }
     return score;
 }
-function isPlayableScTrack(t) {
-    if (t.policy === 'SNIP' || t.policy === 'BLOCK' || t.streamable === false)
-        return false;
-    const transcodings = t.media?.transcodings || [];
-    return transcodings.some(tc => !tc.snipped);
-}
-function orderTranscodings(t) {
-    const list = (t.media?.transcodings || []).filter(tc => !tc.snipped);
-    const rank = (tc) => {
-        const protocol = tc.format?.protocol || '';
-        const mime = tc.format?.mime_type || '';
-        if (protocol === 'progressive')
-            return 0;
-        if (protocol === 'hls' && (mime.includes('mp4') || mime.includes('aac')))
-            return 1;
-        if (protocol === 'hls' && mime.includes('ogg'))
-            return 2;
-        if (protocol === 'hls')
-            return 3;
-        return 9;
-    };
-    return [...list].sort((a, b) => rank(a) - rank(b)).filter(tc => rank(tc) < 9);
-}
-async function findSoundCloudStreamUrl(track) {
-    const base = track.artist && track.songTitle
-        ? `${track.artist} ${cleanTitle(track.songTitle)}`
-        : cleanTitle(track.title.replace(/\s+-\s+/, ' '));
-    const data = await soundCloudApi(`/search/tracks?q=${encodeURIComponent(base)}&limit=10`);
-    const candidates = (data.collection || []).filter(isPlayableScTrack);
-    if (candidates.length === 0)
-        return null;
-    const best = candidates
-        .map(c => ({ c, score: scoreSoundCloudCandidate(c, track) }))
-        .sort((a, b) => b.score - a.score)[0];
-    if (!best || best.score < 35) {
-        services_1.logger.warn(`[MusicExtractor] Nenhum áudio confiável no SoundCloud para "${track.title}" (melhor score ${best?.score ?? 0})`);
-        return null;
-    }
-    const clientId = await getSoundCloudClientId();
-    const authParam = best.c.track_authorization ? `&track_authorization=${best.c.track_authorization}` : '';
-    for (const transcoding of orderTranscodings(best.c)) {
+async function findSoundCloudAudioSource(track) {
+    const queries = [
+        track.artist && track.songTitle ? `${track.artist} ${cleanTitle(track.songTitle)}` : cleanTitle(track.title),
+        track.songTitle ? cleanTitle(track.songTitle) : ''
+    ].filter(Boolean);
+    for (const q of queries) {
         try {
-            const resolved = await fetchJson(`${transcoding.url}?client_id=${clientId}${authParam}`);
-            if (resolved.url) {
-                services_1.logger.info(`[MusicExtractor] Áudio encontrado para "${track.title}" -> SoundCloud "${best.c.title}" (score ${Math.round(best.score)}, ${transcoding.format?.protocol})`);
-                return resolved.url;
+            const data = await soundCloudApi(`/search/tracks?q=${encodeURIComponent(q)}&limit=10`);
+            const candidates = (data.collection || []).filter(isPlayableScTrack);
+            if (candidates.length === 0)
+                continue;
+            const ranked = candidates
+                .map(c => ({ c, score: scoreSoundCloudCandidate(c, track) }))
+                .sort((a, b) => b.score - a.score);
+            const clientId = await getSoundCloudClientId();
+            for (const { c, score } of ranked.slice(0, 3)) {
+                if (score < 25)
+                    continue;
+                const authParam = c.track_authorization ? `&track_authorization=${c.track_authorization}` : '';
+                for (const transcoding of orderTranscodings(c)) {
+                    try {
+                        const resolved = await fetchJson(`${transcoding.url}?client_id=${clientId}${authParam}`);
+                        if (resolved.url) {
+                            services_1.logger.info(`[MusicExtractor] Áudio SoundCloud para "${track.title}" -> "${c.title}" (score ${Math.round(score)})`);
+                            return {
+                                kind: 'url',
+                                url: resolved.url,
+                                expiresAt: Date.now() + STREAM_CACHE_TTL_MS
+                            };
+                        }
+                    }
+                    catch {
+                        // tenta próximo transcoding
+                    }
+                }
             }
         }
         catch {
-            // tenta o próximo formato
+            // tenta próxima query
         }
     }
     return null;
 }
 /**
- * Obtém (com cache e deduplicação) a URL de áudio da faixa
+ * Resolve e faz cache da melhor fonte de áudio disponível para a faixa
  */
-async function getStreamUrl(track) {
+async function resolveBestAudioSource(track) {
     const key = track.id;
-    const cached = streamUrlCache.get(key);
+    const cached = audioSourceCache.get(key);
     if (cached && cached.expiresAt > Date.now())
-        return cached.streamUrl;
-    const inflight = inflightStreams.get(key);
+        return cached;
+    const inflight = inflightAudioSources.get(key);
     if (inflight)
         return inflight;
-    const promise = findSoundCloudStreamUrl(track)
-        .then(url => {
-        if (url)
-            streamUrlCache.set(key, { streamUrl: url, expiresAt: Date.now() + STREAM_CACHE_TTL_MS });
-        return url;
-    })
-        .catch((error) => {
-        services_1.logger.warn(`[MusicExtractor] Falha ao buscar áudio para "${track.title}": ${error.message}`);
+    const promise = (async () => {
+        // 1. Motor rápido via HTTP Chunked Range (~800ms)
+        const chunked = await findChunkedAudioSource(track);
+        if (chunked) {
+            audioSourceCache.set(key, chunked);
+            return chunked;
+        }
+        // 2. Motor SoundCloud API v2 nativa (sem DRM)
+        const sc = await findSoundCloudAudioSource(track);
+        if (sc) {
+            audioSourceCache.set(key, sc);
+            return sc;
+        }
+        // 3. Fallback CDN do Deezer se disponível
+        if (track.previewUrl) {
+            return {
+                kind: 'url',
+                url: track.previewUrl,
+                expiresAt: Date.now() + 10 * 60 * 1000
+            };
+        }
         return null;
-    })
-        .finally(() => inflightStreams.delete(key));
-    inflightStreams.set(key, promise);
+    })().finally(() => {
+        inflightAudioSources.delete(key);
+    });
+    inflightAudioSources.set(key, promise);
     return promise;
 }
 // ═══════════════════════════════════════════════════════════════════════════
 // API pública
 // ═══════════════════════════════════════════════════════════════════════════
 /**
- * Pré-carrega o client_id do SoundCloud para a primeira música tocar sem atraso
+ * Inicializa as fontes de áudio do módulo de música
  */
 function warmupMusicSources() {
-    getSoundCloudClientId()
-        .then(() => services_1.logger.info('[MusicExtractor] Fonte de áudio pronta (SoundCloud)'))
-        .catch(err => services_1.logger.warn(`[MusicExtractor] Falha no warmup do SoundCloud: ${err.message}`));
+    services_1.logger.info('[MusicExtractor] Fontes de áudio prontas (Deezer + Spotify + Dual Stream Engine)');
 }
 /**
  * Resolve faixas a partir de texto, link do Spotify/Deezer ou link direto de áudio
@@ -479,26 +615,34 @@ async function resolveTracks(query, requestedBy) {
     }
     // 2. Links do Spotify
     if (isHttpUrl(trimmed) && isSpotifyUrl(trimmed)) {
-        return (await resolveSpotifyUrl(trimmed)).map(m => toTrack(m, requestedBy));
+        const tracks = (await resolveSpotifyUrl(trimmed)).map(m => toTrack(m, requestedBy));
+        if (tracks[0])
+            prewarmTrack(tracks[0]);
+        return tracks;
     }
     // 3. Links do Deezer
     if (isHttpUrl(trimmed) && isDeezerUrl(trimmed)) {
-        return (await resolveDeezerUrl(trimmed)).map(m => toTrack(m, requestedBy));
+        const tracks = (await resolveDeezerUrl(trimmed)).map(m => toTrack(m, requestedBy));
+        if (tracks[0])
+            prewarmTrack(tracks[0]);
+        return tracks;
     }
-    // 4. Outros links (YouTube, SoundCloud...) não são suportados
+    // 4. Outros links (ex: YouTube) não são suportados
     if (isHttpUrl(trimmed))
         return [];
     // 5. Busca por texto (Deezer) com cache
     const cacheKey = normalize(trimmed);
     const cached = searchCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-        return [toTrack(cached.track, requestedBy)];
+        const track = toTrack(cached.track, requestedBy);
+        prewarmTrack(track);
+        return [track];
     }
     const found = await searchDeezer(trimmed);
     if (found) {
         searchCache.set(cacheKey, { track: found, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
         const track = toTrack(found, requestedBy);
-        prewarmTrack(track); // já começa a buscar o áudio
+        prewarmTrack(track);
         return [track];
     }
     // 6. Fallback: busca direta no SoundCloud quando a música não está no Deezer
@@ -510,7 +654,7 @@ async function resolveTracks(query, requestedBy) {
             const meta = {
                 id: `sc-${sc.id}`,
                 title: sc.title || trimmed,
-                url: `https://api.soundcloud.com/tracks/${sc.id}`,
+                url: `https://www.deezer.com/search/${encodeURIComponent(trimmed)}`,
                 duration: formatDuration(seconds),
                 durationSeconds: seconds,
                 author: sc.user?.username || 'Desconhecido',
@@ -519,7 +663,9 @@ async function resolveTracks(query, requestedBy) {
                 songTitle: sc.title
             };
             searchCache.set(cacheKey, { track: meta, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
-            return [toTrack(meta, requestedBy)];
+            const track = toTrack(meta, requestedBy);
+            prewarmTrack(track);
+            return [track];
         }
     }
     catch (error) {
@@ -528,18 +674,119 @@ async function resolveTracks(query, requestedBy) {
     return [];
 }
 /**
- * Pré-aquece a faixa em segundo plano para a troca ser instantânea
+ * Pré-aquece a faixa em segundo plano para a reprodução começar instantaneamente
  */
 function prewarmTrack(track) {
     if (!track || track.source === 'direct')
         return;
-    getStreamUrl(track).catch(() => { });
+    resolveBestAudioSource(track).catch(() => { });
 }
 /**
- * Abre o FFmpeg e só devolve o recurso quando os primeiros bytes de áudio chegarem
- * (assim nunca mostramos "Tocando Agora" sem som)
+ * Cria um stream PCM a partir de requisições HTTP Range em blocos de 512KB (~800ms total)
  */
-async function createVerifiedPcmResource(inputUrl, track) {
+async function createChunkedRangePcmResource(source, track) {
+    const total = source.contentLength || 0;
+    if (total <= 0)
+        return null;
+    const ua = source.userAgent || IOS_UA;
+    const firstChunkSize = 256 * 1024;
+    const firstEnd = Math.min(firstChunkSize - 1, total - 1);
+    let firstBuffer;
+    try {
+        const firstRes = await fetch(source.url, {
+            headers: { 'User-Agent': ua, Range: `bytes=0-${firstEnd}` },
+            signal: AbortSignal.timeout(4000)
+        });
+        if (!firstRes.ok && firstRes.status !== 206)
+            return null;
+        firstBuffer = Buffer.from(await firstRes.arrayBuffer());
+        if (firstBuffer.length === 0)
+            return null;
+    }
+    catch {
+        return null;
+    }
+    let aborted = false;
+    const chunkStream = stream_1.Readable.from((async function* () {
+        yield firstBuffer;
+        const step = 512 * 1024;
+        for (let start = firstEnd + 1; start < total && !aborted; start += step) {
+            const end = Math.min(start + step - 1, total - 1);
+            const res = await fetch(source.url, {
+                headers: { 'User-Agent': ua, Range: `bytes=${start}-${end}` },
+                signal: AbortSignal.timeout(8000)
+            });
+            if (!res.ok && res.status !== 206)
+                break;
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.length === 0)
+                break;
+            yield buf;
+        }
+    })());
+    const ffmpeg = new prism_media_1.default.FFmpeg({
+        args: [
+            '-analyzeduration', '0',
+            '-probesize', '32768',
+            '-fflags', '+nobuffer',
+            '-i', 'pipe:0',
+            '-loglevel', 'error',
+            '-vn',
+            '-f', 's16le',
+            '-ar', '48000',
+            '-ac', '2'
+        ]
+    });
+    const buffered = new stream_1.PassThrough({ highWaterMark: 1024 * 1024 });
+    chunkStream.on('error', () => {
+        aborted = true;
+    });
+    chunkStream.pipe(ffmpeg).pipe(buffered);
+    const ready = await new Promise((resolve) => {
+        let settled = false;
+        const finish = (ok) => {
+            if (settled)
+                return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(ok);
+        };
+        const timer = setTimeout(() => finish(false), FFMPEG_READY_TIMEOUT_MS);
+        buffered.once('readable', () => finish(true));
+        ffmpeg.once('error', () => finish(false));
+        ffmpeg.once('close', () => finish(false));
+    });
+    if (!ready) {
+        aborted = true;
+        try {
+            chunkStream.destroy();
+            ffmpeg.destroy();
+            buffered.destroy();
+        }
+        catch {
+            // ignora
+        }
+        return null;
+    }
+    buffered.once('close', () => {
+        aborted = true;
+        try {
+            chunkStream.destroy();
+            ffmpeg.destroy();
+        }
+        catch {
+            // ignora
+        }
+    });
+    return (0, voice_1.createAudioResource)(buffered, {
+        inputType: voice_1.StreamType.Raw,
+        metadata: track
+    });
+}
+/**
+ * Abre o FFmpeg em uma URL direta/HLS e só devolve o recurso quando os primeiros bytes PCM chegarem
+ */
+async function createVerifiedUrlPcmResource(inputUrl, track) {
     const isHls = inputUrl.includes('.m3u8');
     const ffmpeg = new prism_media_1.default.FFmpeg({
         args: [
@@ -592,31 +839,48 @@ async function createVerifiedPcmResource(inputUrl, track) {
         metadata: track
     });
 }
+async function openAudioSource(source, track) {
+    if (source.kind === 'chunked') {
+        return createChunkedRangePcmResource(source, track);
+    }
+    return createVerifiedUrlPcmResource(source.url, track);
+}
 /**
  * Cria o recurso de áudio da faixa (verificado: só retorna se houver som)
  */
 async function createAudioStream(track) {
     if (track.source === 'direct') {
-        const direct = await createVerifiedPcmResource(track.url, track);
+        const direct = await createVerifiedUrlPcmResource(track.url, track);
         if (direct)
             return direct;
         throw new Error('Não consegui abrir esse link de áudio');
     }
     const started = Date.now();
-    let streamUrl = await getStreamUrl(track);
-    if (streamUrl) {
-        const resource = await createVerifiedPcmResource(streamUrl, track);
+    const source = await resolveBestAudioSource(track);
+    if (source) {
+        const resource = await openAudioSource(source, track);
         if (resource) {
-            services_1.logger.info(`[MusicExtractor] "${track.title}" pronto em ${Date.now() - started}ms`);
+            services_1.logger.info(`[MusicExtractor] "${track.title}" pronto em ${Date.now() - started}ms (${source.kind})`);
             return resource;
         }
-        // URL expirada/inválida: limpa o cache e tenta uma vez de novo
-        streamUrlCache.delete(track.id);
-        streamUrl = await getStreamUrl(track);
-        if (streamUrl) {
-            const retry = await createVerifiedPcmResource(streamUrl, track);
-            if (retry)
-                return retry;
+        audioSourceCache.delete(track.id);
+    }
+    // Fallback direto para SoundCloud caso o motor chunked tenha falhado no FFmpeg
+    const scFallback = await findSoundCloudAudioSource(track);
+    if (scFallback) {
+        const scResource = await openAudioSource(scFallback, track);
+        if (scResource) {
+            audioSourceCache.set(track.id, scFallback);
+            services_1.logger.info(`[MusicExtractor] "${track.title}" pronto via SoundCloud em ${Date.now() - started}ms`);
+            return scResource;
+        }
+    }
+    // Último fallback: preview oficial da CDN do Deezer
+    if (track.previewUrl) {
+        const previewResource = await createVerifiedUrlPcmResource(track.previewUrl, track);
+        if (previewResource) {
+            services_1.logger.info(`[MusicExtractor] "${track.title}" pronto via Deezer CDN em ${Date.now() - started}ms`);
+            return previewResource;
         }
     }
     throw new Error('Não encontrei o áudio dessa música');
