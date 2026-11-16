@@ -10,7 +10,11 @@ export interface Track {
     thumbnail?: string;
     author?: string;
     requestedBy: GuildMember;
-    source: 'youtube' | 'soundcloud' | 'spotify' | 'deezer' | 'direct';
+    source: 'soundcloud' | 'spotify' | 'deezer' | 'direct';
+    /** Artista principal (usado para achar o áudio certo) */
+    artist?: string;
+    /** Nome da música sem o artista */
+    songTitle?: string;
 }
 export interface GuildQueueState {
     guildId: string;

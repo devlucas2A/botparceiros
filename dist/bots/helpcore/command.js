@@ -45,7 +45,7 @@ exports.HELPCORE_CATEGORIES = {
             },
             {
                 name: '✨ Módulos Disponíveis',
-                value: '• 🎵 **Música (`core!`)**: Player com fila FIFO, suporte a YouTube/Spotify e áudio HD.\n' +
+                value: '• 🎵 **Música (`core!`)**: Player com fila FIFO, suporte a Spotify/Deezer e áudio HD.\n' +
                     '• 🤖 **IA & Servidor**: Construtor autônomo de servidores e assistente generativo.\n' +
                     '• 📞 **Calls Privadas**: Canais temporários automáticos com permissões exclusivas.\n' +
                     '• 🎫 **Tickets & Suporte**: Painel interativo com transcrição de atendimentos.\n' +
@@ -69,7 +69,7 @@ exports.HELPCORE_CATEGORIES = {
         description: 'Comandos de áudio, fila, reprodução e controles de voz',
         title: '🎵 CoreBot — Sistema de Música (core!)',
         embedDescription: 'O sistema de reprodução musical do CoreBot oferece streaming de alta fidelidade com fila FIFO, ' +
-            'suporte a múltiplas fontes (YouTube, Spotify, SoundCloud, links diretos de áudio) e controles de voz completos.\n\n' +
+            'suporte a busca pelo nome, links do Spotify e do Deezer (músicas, álbuns e playlists) e controles de voz completos.\n\n' +
             '**Prefixo exclusivo:** `core!` *(mensagens com esse prefixo não consom créditos de IA)*',
         fields: [
             {
@@ -94,7 +94,7 @@ exports.HELPCORE_CATEGORIES = {
             {
                 name: '💡 Exemplos de Uso',
                 value: '• `core!play Bohemian Rhapsody`\n' +
-                    '• `core!play https://www.youtube.com/watch?v=fJ9rUzIMcZQ`\n' +
+                    '• `core!play https://www.deezer.com/track/...`\n' +
                     '• `core!play https://open.spotify.com/track/...`\n' +
                     '• `core!loop track`'
             }

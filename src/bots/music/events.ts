@@ -2,6 +2,7 @@ import { Client, EmbedBuilder, Message } from 'discord.js';
 import { findMusicCommand } from './commands';
 import { MusicCommand } from './types';
 import { musicManager } from './music.manager';
+import { warmupMusicSources } from './extractor';
 import { logger, redisService } from '../../shared/services';
 
 let musicEventsRegistered = false;
@@ -16,18 +17,6 @@ function rememberClaimedMessage(messageId: string): void {
 }
 
 async function tryClaimMusicCommand(message: Message): Promise<boolean> {
-    const isCloudInstance = Boolean(
-        process.env.RENDER ||
-        process.env.RAILWAY_ENVIRONMENT ||
-        process.env.NODE_ENV === 'production'
-    );
-
-    // Se estiver rodando na nuvem (Render), aguarda 450ms para dar prioridade
-    // a uma eventual instância local de desenvolvimento e evitar colisão de voz
-    if (isCloudInstance) {
-        await new Promise(resolve => setTimeout(resolve, 450));
-    }
-
     if (claimedMessageIds.has(message.id)) {
         return false;
     }
@@ -97,6 +86,7 @@ export function setupMusicEvents(client: Client): void {
     musicEventsRegistered = true;
 
     logger.info(`🌌 Módulo Music (pid ${process.pid}): Eventos inicializados (messageCreate + voiceStateUpdate)`);
+    warmupMusicSources();
 
     // Interceptação de mensagens com prefixo core!
     client.on('messageCreate', async (message: Message) => {

@@ -23,7 +23,7 @@ function createProgressBar(currentMs, totalSeconds, length = 14) {
 exports.playCommand = {
     name: 'play',
     aliases: ['p'],
-    description: 'Toca uma música ou playlist do YouTube, SoundCloud, Spotify ou link direto',
+    description: 'Toca uma música pelo nome ou por link do Spotify/Deezer',
     usage: 'core!play <busca ou URL>',
     execute: async (message, args, member) => {
         const query = args.join(' ').trim();
@@ -39,6 +39,13 @@ exports.playCommand = {
             const embed = new discord_js_1.EmbedBuilder()
                 .setColor(0xED4245)
                 .setDescription('❌ Você precisa estar em um canal de voz para tocar música!');
+            await message.reply({ embeds: [embed] });
+            return;
+        }
+        if ((0, extractor_1.isUnsupportedMusicUrl)(query)) {
+            const embed = new discord_js_1.EmbedBuilder()
+                .setColor(0xED4245)
+                .setDescription('❌ Esse link não é suportado. Use o **nome da música** ou um link do **Spotify** ou **Deezer**.');
             await message.reply({ embeds: [embed] });
             return;
         }
@@ -453,7 +460,7 @@ exports.helpCommand = {
             .setDescription('Gerencie a reprodução de músicas em alta qualidade no seu canal de voz!')
             .addFields({
             name: '▶️ `core!play <busca/link>` (`core!p`)',
-            value: 'Toca uma música ou playlist (YouTube, SoundCloud, Spotify ou link direto).'
+            value: 'Toca uma música pelo nome ou por link do Spotify/Deezer (músicas, álbuns e playlists).'
         }, {
             name: '⏹️ `core!stop` (`core!parar`)',
             value: 'Para a reprodução, limpa a fila e desconecta o bot.'

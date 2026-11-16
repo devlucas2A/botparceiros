@@ -365,7 +365,7 @@ The interactive help system on Discord is structured into seven distinct functio
 ### 7.2 Prefix `core!` Music Commands
 - Prefix: `core!`
 - Commands:
-  - `core!play <busca ou URL>`: Resolves YouTube/Spotify/Direct streams and appends to the guild queue.
+  - `core!play <busca ou URL>`: Resolves song names (Deezer search) and Spotify/Deezer links, then appends to the guild queue.
   - `core!stop`: Stops playback, clears the queue, and resets the player state.
   - `core!skip`: Advances to the next track in the FIFO queue.
   - `core!leave`: Disconnects the bot from the current voice channel.

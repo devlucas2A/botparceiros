@@ -10,15 +10,24 @@ export declare function formatDuration(seconds: number): string;
  */
 export declare function isDirectAudioUrl(url: string): boolean;
 /**
- * Resolve tracks a partir de uma busca de texto ou link (YouTube, Spotify, Deezer, SoundCloud, Link Direto)
+ * Retorna true para links que não são suportados (YouTube, SoundCloud, etc.).
+ * Aceitamos apenas nome da música, Spotify, Deezer e links diretos de áudio.
+ */
+export declare function isUnsupportedMusicUrl(query: string): boolean;
+/**
+ * Pré-carrega o client_id do SoundCloud para a primeira música tocar sem atraso
+ */
+export declare function warmupMusicSources(): void;
+/**
+ * Resolve faixas a partir de texto, link do Spotify/Deezer ou link direto de áudio
  */
 export declare function resolveTracks(query: string, requestedBy: GuildMember): Promise<Track[]>;
 /**
- * Pré-aquece a próxima música da fila em segundo plano para troca instantânea
+ * Pré-aquece a faixa em segundo plano para a troca ser instantânea
  */
 export declare function prewarmTrack(track: Track | undefined): void;
 /**
- * Extração rápida do stream de áudio via URL direta verificada (FFmpeg) com fallback para pipe yt-dlp
+ * Cria o recurso de áudio da faixa (verificado: só retorna se houver som)
  */
 export declare function createAudioStream(track: Track): Promise<AudioResource>;
 //# sourceMappingURL=extractor.d.ts.map

@@ -18,7 +18,7 @@ function createMockTrack(id: string, title: string, durationSec: number = 180): 
         durationSeconds: durationSec,
         author: 'Artist Test',
         requestedBy: {} as any,
-        source: 'youtube'
+        source: 'deezer'
     };
 }
 

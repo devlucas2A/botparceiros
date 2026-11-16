@@ -1,7 +1,7 @@
 import { EmbedBuilder, GuildMember, Message, PermissionFlagsBits } from 'discord.js';
 import { MusicCommand } from './types';
 import { musicManager } from './music.manager';
-import { formatDuration, prewarmTrack, resolveTracks } from './extractor';
+import { formatDuration, isUnsupportedMusicUrl, prewarmTrack, resolveTracks } from './extractor';
 
 /**
  * Cria uma barra de progresso visual para a música atual
@@ -23,7 +23,7 @@ export function createProgressBar(currentMs: number, totalSeconds: number, lengt
 export const playCommand: MusicCommand = {
     name: 'play',
     aliases: ['p'],
-    description: 'Toca uma música ou playlist do YouTube, SoundCloud, Spotify ou link direto',
+    description: 'Toca uma música pelo nome ou por link do Spotify/Deezer',
     usage: 'core!play <busca ou URL>',
     execute: async (message: Message, args: string[], member: GuildMember) => {
         const query = args.join(' ').trim();
@@ -40,6 +40,14 @@ export const playCommand: MusicCommand = {
             const embed = new EmbedBuilder()
                 .setColor(0xED4245)
                 .setDescription('❌ Você precisa estar em um canal de voz para tocar música!');
+            await message.reply({ embeds: [embed] });
+            return;
+        }
+
+        if (isUnsupportedMusicUrl(query)) {
+            const embed = new EmbedBuilder()
+                .setColor(0xED4245)
+                .setDescription('❌ Esse link não é suportado. Use o **nome da música** ou um link do **Spotify** ou **Deezer**.');
             await message.reply({ embeds: [embed] });
             return;
         }
@@ -512,7 +520,7 @@ export const helpCommand: MusicCommand = {
             .addFields(
                 {
                     name: '▶️ `core!play <busca/link>` (`core!p`)',
-                    value: 'Toca uma música ou playlist (YouTube, SoundCloud, Spotify ou link direto).'
+                    value: 'Toca uma música pelo nome ou por link do Spotify/Deezer (músicas, álbuns e playlists).'
                 },
                 {
                     name: '⏹️ `core!stop` (`core!parar`)',

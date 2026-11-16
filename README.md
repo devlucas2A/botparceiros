@@ -40,7 +40,7 @@ O CoreBot é construído em um monorepo workspace estruturado em serviços desac
 | Módulo | Descrição | Interface | Status |
 |---|---|---|---|
 | **Central de Ajuda `/helpcore`** | Central nativa no Discord com `StringSelectMenu` de 7 categorias, embed dinâmico e botões rápidos. | Slash Command (`/helpcore`) | 🟢 Produção |
-| **Subsistema Musical (`core!`)** | Player de áudio autônomo com suporte a buscas no YouTube, links do Spotify e URLs diretas via FIFO queue. | Prefixo `core!` | 🟢 Produção |
+| **Subsistema Musical (`core!`)** | Player de áudio autônomo com suporte a buscas pelo nome, links do Spotify e do Deezer via FIFO queue. | Prefixo `core!` | 🟢 Produção |
 | **Geração de Servidor com IA** | Criação instantânea de canais, categorias e cargos a partir de prompt com preview e reversão (`/desfazer-servidor`). | Web + `/construir-servidor` | 🟢 Produção |
 | **Calls Privadas Dinâmicas** | Canais de voz temporários criados sob demanda com controle de dono, tranca e autodestruição ao esvaziar. | Slash (`/call`) + Voice WS | 🟢 Produção |
 | **Central de Tickets 2.0** | Abertura multidepartamento, botões de staff e geração de transcripts em HTML com resumo inteligente. | Web + `/ticket-painel` | 🟢 Produção |

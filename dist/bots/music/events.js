@@ -5,6 +5,7 @@ exports.setupMusicEvents = setupMusicEvents;
 const discord_js_1 = require("discord.js");
 const commands_1 = require("./commands");
 const music_manager_1 = require("./music.manager");
+const extractor_1 = require("./extractor");
 const services_1 = require("../../shared/services");
 let musicEventsRegistered = false;
 const claimedMessageIds = new Set();
@@ -17,14 +18,6 @@ function rememberClaimedMessage(messageId) {
     }
 }
 async function tryClaimMusicCommand(message) {
-    const isCloudInstance = Boolean(process.env.RENDER ||
-        process.env.RAILWAY_ENVIRONMENT ||
-        process.env.NODE_ENV === 'production');
-    // Se estiver rodando na nuvem (Render), aguarda 450ms para dar prioridade
-    // a uma eventual instância local de desenvolvimento e evitar colisão de voz
-    if (isCloudInstance) {
-        await new Promise(resolve => setTimeout(resolve, 450));
-    }
     if (claimedMessageIds.has(message.id)) {
         return false;
     }
@@ -87,6 +80,7 @@ function setupMusicEvents(client) {
     }
     musicEventsRegistered = true;
     services_1.logger.info(`🌌 Módulo Music (pid ${process.pid}): Eventos inicializados (messageCreate + voiceStateUpdate)`);
+    (0, extractor_1.warmupMusicSources)();
     // Interceptação de mensagens com prefixo core!
     client.on('messageCreate', async (message) => {
         // Se outra instância do próprio bot já respondeu a um comando, registra para evitar duplicidade
