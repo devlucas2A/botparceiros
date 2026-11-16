@@ -54,7 +54,21 @@ export function BotHealthCard({ botStatus, guildId }: Props) {
         setRefreshing(false);
     }
 
-    useEffect(() => { loadHealth(); }, []);
+    useEffect(() => {
+        let isMounted = true;
+        fetch("/api/health", { cache: "no-store" })
+            .then(res => (res.ok ? res.json() : null))
+            .then(data => {
+                if (isMounted && data) {
+                    setHealth(data);
+                }
+            })
+            .catch(() => { /* silencioso */ });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const status = health?.bot.status || "unknown";
     const badge = STATUS_BADGE[status];

@@ -44,7 +44,6 @@ export default async function WelcomePage({ params }: Props) {
     }
 
     // Fetch user plan
-    // @ts-ignore
     const userId = session?.user?.id;
     let plan = 'free';
 

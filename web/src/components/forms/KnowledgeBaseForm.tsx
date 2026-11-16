@@ -44,7 +44,9 @@ export function KnowledgeBaseForm({
             toast.success("Base de Conhecimento", {
                 description: state.message,
             });
-            setIsEditing(false);
+            setTimeout(() => {
+                setIsEditing(false);
+            }, 0);
         } else if (state?.error) {
             toast.error("Erro ao salvar tópico", {
                 description: state.error,
@@ -171,7 +173,7 @@ export function KnowledgeBaseForm({
 
                             <div className="space-y-2">
                                 <Label htmlFor="topic" className="text-zinc-300 text-xs font-semibold">
-                                    Título do Tópico (ex: "Horário de Suporte", "Como se tornar VIP", "IP do Servidor")
+                                    Título do Tópico (ex: &quot;Horário de Suporte&quot;, &quot;Como se tornar VIP&quot;, &quot;IP do Servidor&quot;)
                                 </Label>
                                 <Input
                                     id="topic"

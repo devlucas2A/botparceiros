@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X, Search, Loader2 } from "lucide-react";
 import { clsx } from "clsx";
@@ -57,9 +57,7 @@ export function Combobox(props: SingleProps | MultiProps) {
     const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number; openUp: boolean }>({
         top: 0, left: 0, width: 0, openUp: false,
     });
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => { setMounted(true); }, []);
+    const mounted = useSyncExternalStore(() => () => {}, () => true, () => false);
 
     // Click fora: ignora cliques dentro do trigger OU do dropdown (portal)
     useEffect(() => {

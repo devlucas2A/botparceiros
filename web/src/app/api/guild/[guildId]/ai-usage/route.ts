@@ -13,13 +13,11 @@ export async function GET(
 ) {
     const session = await getServerSession(authOptions);
 
-    // @ts-ignore
     if (!session || !session.user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { guildId } = await params;
-    // @ts-ignore
     const userId = session.user.id;
 
     try {

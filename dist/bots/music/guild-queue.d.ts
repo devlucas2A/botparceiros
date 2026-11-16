@@ -1,0 +1,40 @@
+import { AudioPlayer, VoiceConnection } from '@discordjs/voice';
+import { TextBasedChannel, VoiceBasedChannel } from 'discord.js';
+import { LoopMode, Track } from './types';
+export declare class GuildQueue {
+    readonly guildId: string;
+    voiceChannel: VoiceBasedChannel;
+    textChannel: TextBasedChannel;
+    connection: VoiceConnection | null;
+    readonly player: AudioPlayer;
+    tracks: Track[];
+    currentTrack: Track | null;
+    loopMode: LoopMode;
+    private isDestroyed;
+    private isManualSkip;
+    private idleTimer;
+    private emptyTimer;
+    private onDeleteCallback?;
+    constructor(guildId: string, voiceChannel: VoiceBasedChannel, textChannel: TextBasedChannel, onDelete?: (guildId: string) => void);
+    get isPlaying(): boolean;
+    get isPaused(): boolean;
+    get playbackDuration(): number;
+    private setupPlayerListeners;
+    safeSend(options: any): void;
+    connect(): VoiceConnection;
+    enqueue(tracks: Track | Track[]): void;
+    playNext(): Promise<boolean>;
+    private handleTrackEnd;
+    skip(): boolean;
+    stop(): void;
+    pause(): boolean;
+    resume(): boolean;
+    setLoop(mode: LoopMode): LoopMode;
+    checkEmptyChannel(): void;
+    startIdleTimer(): void;
+    clearIdleTimer(): void;
+    clearEmptyTimer(): void;
+    private sendNowPlayingEmbed;
+    destroy(): void;
+}
+//# sourceMappingURL=guild-queue.d.ts.map

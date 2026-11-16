@@ -1,17 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SidebarContent, SidebarContentProps } from "./SidebarContent";
 import { usePathname } from "next/navigation";
 
 export function MobileSidebar(props: SidebarContentProps) {
-    const [isOpen, setIsOpen] = useState(false);
     const pathname = usePathname();
+    const [prevPathname, setPrevPathname] = useState(pathname);
+    const [isOpen, setIsOpen] = useState(false);
 
     // Close sidebar when route changes
-    useEffect(() => {
+    if (pathname !== prevPathname) {
+        setPrevPathname(pathname);
         setIsOpen(false);
-    }, [pathname]);
+    }
 
     return (
         <div>

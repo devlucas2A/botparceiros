@@ -2,6 +2,7 @@
 
 import { updateAutoModConfig } from "@/actions/guild-actions";
 import { useActionState } from "react";
+import NextLink from "next/link";
 import { useFormStatus } from "react-dom";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -16,17 +17,18 @@ import { RoleSelect } from "@/components/discord/RoleSelect";
 import { toast } from "sonner";
 
 interface AutoModConfig {
-    guild_id: string;
-    welcome_message: string | null;
-    welcome_channel_id: string | null;
-    welcome_banner_url: string | null;
-    welcome_font: string | null;
-    leave_message: string | null;
-    leave_channel_id: string | null;
-    autorole_id: string | null;
-    automod_links_enabled: boolean;
-    automod_caps_enabled: boolean;
-    automod_spam_enabled: boolean;
+    guild_id?: string;
+    welcome_message?: string | null;
+    welcome_channel_id?: string | null;
+    welcome_banner_url?: string | null;
+    welcome_font?: string | null;
+    welcome_font_changes_count?: number;
+    leave_message?: string | null;
+    leave_channel_id?: string | null;
+    autorole_id?: string | null;
+    automod_links_enabled?: boolean;
+    automod_caps_enabled?: boolean;
+    automod_spam_enabled?: boolean;
 }
 
 function SubmitButton() {
@@ -70,7 +72,7 @@ const GOOGLE_FONTS = [
 // ✨ FORM COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: any, guildId: string, user?: any, plan?: string }) {
+export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: AutoModConfig, guildId: string, user?: { id?: string; name?: string | null; image?: string | null }, plan?: string }) {
     // We will need to update the action import later, for now we keep it as placeholder or error until we fix guild-actions.ts
     // let's assume updateWelcomeConfig is exported from guild-actions
     // but to avoid TS error before I create the action, I will use updateAutoModConfig and rename it in next step
@@ -321,7 +323,7 @@ export function WelcomeForm({ config, guildId, user, plan = 'free' }: { config: 
                                                     <span className="text-[10px] font-bold text-amber-400 uppercase flex items-center justify-center gap-1">
                                                         <ShieldAlert className="w-3 h-3" /> Limite Atingido
                                                     </span>
-                                                    <a href="/dashboard/billing" className="text-[9px] text-blue-400 hover:text-blue-300 underline mt-0.5 block">Starter: Trocas Ilimitadas</a>
+                                                    <NextLink href="/dashboard/billing" className="text-[9px] text-blue-400 hover:text-blue-300 underline mt-0.5 block">Starter: Trocas Ilimitadas</NextLink>
                                                 </div>
                                             </div>
                                         )}

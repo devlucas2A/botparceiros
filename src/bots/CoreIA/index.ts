@@ -53,12 +53,19 @@ import { setupTicketEvents, TICKET_EVENTS } from '../tickets/events';
 import { commandEngine } from '../custom-commands/engine';
 import { customCommandService } from '../custom-commands/service';
 import { setupPrivateCallsEvents, PRIVATE_CALLS_EVENTS } from '../private-calls/events';
+import { setupMusicEvents } from '../music/events';
 import { heartbeatService } from '../../shared/services/heartbeat.service';
 import {
     handleConstruirServidor,
     handleServerBuilderButton,
     handleDesfazerServidor,
 } from '../server-builder/command';
+import {
+    HELPCORE_COMMAND,
+    handleHelpCoreCommand,
+    handleHelpCoreSelectMenu,
+    handleHelpCoreButton,
+} from '../helpcore';
 
 
 let dbConnected = false;
@@ -817,6 +824,11 @@ client.on('messageCreate', async (message: Message) => {
         trackEvent(message.guild.id, 'message').catch(() => {});
     }
 
+    // Interceptar comandos de música (core!) para execução exclusiva sem cair na IA
+    if (message.content.trim().toLowerCase().startsWith('core!')) {
+        return;
+    }
+
     const conteudoLower = message.content.toLowerCase();
 
     if (message.channel.id === CANAL_CHAT_GERAL) {
@@ -1098,6 +1110,9 @@ client.on('interactionCreate', async (interaction) => {
             ephemeral: true
         });
     }
+    else if (interaction.commandName === 'helpcore') {
+        await handleHelpCoreCommand(interaction);
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // 🤖 EXECUÇÃO DE COMANDOS PERSONALIZADOS
@@ -1106,7 +1121,8 @@ client.on('interactionCreate', async (interaction) => {
         // Ignorar comandos de outros módulos para evitar conflito/dupla resposta
         const MODULE_COMMANDS = [
             'ticket-painel', 'ticket-categoria',
-            'entrar-call', 'sair-call', 'painel-call', 'config-call'
+            'entrar-call', 'sair-call', 'painel-call', 'config-call',
+            'helpcore', 'call'
         ];
 
         if (MODULE_COMMANDS.includes(interaction.commandName)) return;
@@ -1149,6 +1165,21 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.reply({ content: '❌ Erro interno ao processar comando.', ephemeral: true });
             }
         }
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 📚 INTERAÇÕES DO /HELPCORE (SELECT MENUS & BOTÕES)
+// ═══════════════════════════════════════════════════════════════════════════
+client.on('interactionCreate', async (interaction) => {
+    try {
+        if (interaction.isStringSelectMenu() && interaction.customId === 'helpcore_category_select') {
+            await handleHelpCoreSelectMenu(interaction);
+        } else if (interaction.isButton() && interaction.customId.startsWith('helpcore:')) {
+            await handleHelpCoreButton(interaction);
+        }
+    } catch (error) {
+        logger.error('Erro ao processar componente do /helpcore:', { error });
     }
 });
 
@@ -1303,6 +1334,7 @@ const commands = [
                 .setDescription('Ex: Adicionar canal de voz na categoria Gaming')
                 .setRequired(true)
         ),
+    HELPCORE_COMMAND,
     ...PRIVATE_CALLS_EVENTS.commands,
     ...TICKET_EVENTS.commands
 ];
@@ -1382,6 +1414,7 @@ setupWelcomeEvents(client);
 setupAutoModEvents(client);
 setupTicketEvents(client);
 setupPrivateCallsEvents(client);
+setupMusicEvents(client);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🆕 GUILD EVENTS

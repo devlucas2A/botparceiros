@@ -15,7 +15,8 @@ import {
     Phone, 
     BarChart3, 
     Tag, 
-    Brain 
+    Brain,
+    Disc 
 } from "lucide-react";
 
 interface ServerSidebarProps {
@@ -39,13 +40,13 @@ function getServerMenuGroups(guildId: string, locale: string): MenuGroup[] {
                     exact: true 
                 },
                 { 
-                    name: "Atividades do Bot", 
+                    name: "Atividades", 
                     icon: Activity, 
                     href: `/${locale}/dashboard/${guildId}/activity`,
                     isLive: true
                 },
                 { 
-                    name: "Analytics & Métricas", 
+                    name: "Estatísticas", 
                     icon: BarChart3, 
                     href: `/${locale}/dashboard/${guildId}/analytics` 
                 },
@@ -61,19 +62,19 @@ function getServerMenuGroups(guildId: string, locale: string): MenuGroup[] {
                     badge: "IA"
                 },
                 { 
-                    name: "Base de Conhecimento", 
+                    name: "Respostas da IA", 
                     icon: Brain, 
                     href: `/${locale}/dashboard/${guildId}/knowledge` 
                 },
                 { 
-                    name: "Comandos Inteligentes", 
+                    name: "Comandos Custom", 
                     icon: Wand2, 
                     href: `/${locale}/dashboard/${guildId}/commands` 
                 },
             ]
         },
         {
-            category: "Moderação & Atendimento",
+            category: "Moderação & Comunidade",
             items: [
                 { 
                     name: "AutoMod & Segurança", 
@@ -81,12 +82,12 @@ function getServerMenuGroups(guildId: string, locale: string): MenuGroup[] {
                     href: `/${locale}/dashboard/${guildId}/automod` 
                 },
                 { 
-                    name: "Tickets de Suporte", 
+                    name: "Tickets", 
                     icon: Ticket, 
                     href: `/${locale}/dashboard/${guildId}/tickets` 
                 },
                 { 
-                    name: "Boas-Vindas & Canvas", 
+                    name: "Boas-Vindas", 
                     icon: Hand, 
                     href: `/${locale}/dashboard/${guildId}/welcome` 
                 },
@@ -94,6 +95,13 @@ function getServerMenuGroups(guildId: string, locale: string): MenuGroup[] {
                     name: "Calls Privadas", 
                     icon: Phone, 
                     href: `/${locale}/dashboard/${guildId}/private-calls` 
+                },
+                { 
+                    name: "Música", 
+                    icon: Disc, 
+                    href: `/${locale}/dashboard/${guildId}/music`,
+                    badge: "core!",
+                    badgeColor: "bg-violet-500/15 border-violet-500/30 text-violet-300"
                 },
             ]
         },

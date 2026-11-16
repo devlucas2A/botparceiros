@@ -7,8 +7,14 @@ import { authOptions } from "@/lib/auth-options";
 // pagina batiam no limit e o 429 era propagado como 403 "Acesso negado".
 const ACCESS_TTL_MS = 60_000;
 const accessCache = new Map<string, { value: boolean; expiresAt: number }>();
+interface DiscordUserGuild {
+    id: string;
+    permissions: string;
+    owner?: boolean;
+}
+
 // Cache da resposta crua de /users/@me/guilds (compartilhada entre guildIds).
-const guildsListCache = new Map<string, { guilds: any[]; expiresAt: number }>();
+const guildsListCache = new Map<string, { guilds: DiscordUserGuild[]; expiresAt: number }>();
 
 function pruneCache<T extends { expiresAt: number }>(map: Map<string, T>) {
     const now = Date.now();
@@ -30,7 +36,6 @@ export async function verifyUserGuildAccess(guildId: string): Promise<boolean> {
     try {
         const session = await getServerSession(authOptions);
 
-        // @ts-ignore - accessToken é injetado nas authOptions callbacks
         const accessToken: string | undefined = session?.accessToken;
 
         if (!accessToken) return false;
@@ -44,7 +49,7 @@ export async function verifyUserGuildAccess(guildId: string): Promise<boolean> {
 
         // 2. Cache da lista de guilds (1 chamada serve pra todos os guildIds)
         const tokenKey = accessToken.slice(-12);
-        let guilds: any[] | undefined = guildsListCache.get(tokenKey)?.guilds;
+        let guilds: DiscordUserGuild[] | undefined = guildsListCache.get(tokenKey)?.guilds;
         const guildsCacheValid = guildsListCache.get(tokenKey)?.expiresAt ?? 0 > now;
         if (!guilds || !guildsCacheValid) {
             const res = await fetch("https://discord.com/api/users/@me/guilds", {
@@ -71,7 +76,7 @@ export async function verifyUserGuildAccess(guildId: string): Promise<boolean> {
             }
         }
 
-        const targetGuild = guilds!.find((g: any) => g.id === guildId);
+        const targetGuild = guilds!.find((g: DiscordUserGuild) => g.id === guildId);
         if (!targetGuild) {
             accessCache.set(cacheKey, { value: false, expiresAt: now + ACCESS_TTL_MS });
             return false;

@@ -135,7 +135,7 @@ export function AutoModForm({ config, guildId }: { config: any, guildId: string,
         if (e.type === 'keydown' && (e as React.KeyboardEvent).key !== 'Enter') return;
         e.preventDefault();
 
-        let domain = newDomain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        const domain = newDomain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
         if (!domain) return;
 
         if (linkWhitelist.includes(domain)) {

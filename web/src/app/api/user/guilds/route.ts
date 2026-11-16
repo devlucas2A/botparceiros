@@ -26,7 +26,6 @@ const getCachedGuilds = async (accessToken: string) => {
 export async function GET() {
   const session = await getServerSession(authOptions);
 
-  // @ts-ignore
   if (!session || !session.accessToken) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -42,7 +41,6 @@ export async function GET() {
     // Better approach for now: Simple Retry Logic
     let res = await fetch("https://discord.com/api/users/@me/guilds", {
       headers: {
-        // @ts-ignore
         Authorization: `Bearer ${session.accessToken}`,
       },
     });
@@ -52,7 +50,6 @@ export async function GET() {
       await new Promise(r => setTimeout(r, 1000));
       res = await fetch("https://discord.com/api/users/@me/guilds", {
         headers: {
-          // @ts-ignore
           Authorization: `Bearer ${session.accessToken}`,
         },
       });
@@ -68,7 +65,7 @@ export async function GET() {
     const guilds = await res.json();
 
     // 0x20 = MANAGE_GUILD (32)
-    const adminGuilds = guilds.filter((guild: any) => (parseInt(guild.permissions) & 0x20) === 0x20);
+    const adminGuilds = guilds.filter((guild: { permissions: string }) => (parseInt(guild.permissions) & 0x20) === 0x20);
 
     return NextResponse.json(adminGuilds);
   } catch (error) {

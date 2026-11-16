@@ -1,451 +1,826 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Bot, BookOpen, Terminal, Sparkles, Shield, Ticket, Phone, Hand, Wand2, Settings, Download, ExternalLink } from "lucide-react";
+import Image from "next/image";
+import { useLocale } from "next-intl";
+import { toast } from "sonner";
+import {
+    Bot,
+    BookOpen,
+    Terminal,
+    Sparkles,
+    Shield,
+    Ticket,
+    Phone,
+    Search,
+    Copy,
+    Check,
+    MessageSquare,
+    Users,
+    ChevronRight,
+    HelpCircle,
+    Server,
+    Rocket,
+    Home,
+    LayoutDashboard,
+    Menu,
+    X,
+    CreditCard,
+    Headphones,
+    Disc,
+    ExternalLink,
+} from "lucide-react";
 
-/**
- * Pagina de Documentacao publica do CoreBot.
- *
- * Estrategia: HTML/JSX nativo do React (sem MDX) para manter controle
- * total de estilo e facilitar exportacao via window.print() — o navegador
- * gera PDF identico ao layout exibido. Estilos @media print no globals
- * (ou inline aqui) ajustam o documento para impressao.
- */
-
-interface Command {
+interface CommandOption {
     name: string;
+    required?: boolean;
     description: string;
-    usage?: string;
-    options?: { name: string; required?: boolean; type: string; description: string }[];
-    subcommands?: { name: string; description: string; options?: { name: string; type: string; description: string }[] }[];
-    permission?: string;
-    example?: string;
-    notes?: string[];
 }
 
-const CORE_COMMANDS: Command[] = [
+interface CommandSubcommand {
+    name: string;
+    description: string;
+}
+
+interface Command {
+    id: string;
+    name: string;
+    category: "ia" | "calls" | "tickets" | "space" | "helpcore" | "music";
+    description: string;
+    permission: "Administrador" | "Dono da Call" | "Membros";
+    example?: string;
+    options?: CommandOption[];
+    subcommands?: CommandSubcommand[];
+}
+
+const ALL_COMMANDS: Command[] = [
+    // ─── GUIA (/helpcore) ────────────────────────────────────────────
     {
+        id: "helpcore",
+        name: "/helpcore",
+        category: "helpcore",
+        description: "Abre o menu de ajuda dentro do Discord com todas as categorias e exemplos.",
+        permission: "Membros",
+        example: "/helpcore categoria:musica",
+        options: [
+            { name: "categoria", required: false, description: "Atalho direto: geral, musica, ia, calls, tickets, automod ou custom." },
+        ],
+    },
+
+    // ─── MÚSICA (core!) ──────────────────────────────────────────────
+    {
+        id: "core-play",
+        name: "core!play <música ou link>",
+        category: "music",
+        description: "Entra na sua call e toca a música. Se já tiver algo tocando, coloca na fila.",
+        permission: "Membros",
+        example: "core!play musica feliz",
+        options: [{ name: "música ou link", required: true, description: "Nome da música, artista ou link." }],
+    },
+    {
+        id: "core-stop",
+        name: "core!stop",
+        category: "music",
+        description: "Para a música na hora e limpa toda a fila.",
+        permission: "Membros",
+        example: "core!stop",
+    },
+    {
+        id: "core-skip",
+        name: "core!skip",
+        category: "music",
+        description: "Pula a música atual e toca a próxima da fila.",
+        permission: "Membros",
+        example: "core!skip",
+    },
+    {
+        id: "core-leave",
+        name: "core!leave",
+        category: "music",
+        description: "Tira o bot do canal de voz.",
+        permission: "Membros",
+        example: "core!leave",
+    },
+    {
+        id: "core-queue",
+        name: "core!queue",
+        category: "music",
+        description: "Mostra todas as músicas que estão na fila.",
+        permission: "Membros",
+        example: "core!queue",
+    },
+    {
+        id: "core-pause",
+        name: "core!pause",
+        category: "music",
+        description: "Pausa a música sem perder a fila.",
+        permission: "Membros",
+        example: "core!pause",
+    },
+    {
+        id: "core-resume",
+        name: "core!resume",
+        category: "music",
+        description: "Continua a música de onde parou.",
+        permission: "Membros",
+        example: "core!resume",
+    },
+    {
+        id: "core-np",
+        name: "core!np",
+        category: "music",
+        description: "Mostra qual música está tocando agora.",
+        permission: "Membros",
+        example: "core!np",
+    },
+    {
+        id: "core-loop",
+        name: "core!loop",
+        category: "music",
+        description: "Repete a música atual, a fila inteira ou desliga a repetição.",
+        permission: "Membros",
+        example: "core!loop",
+    },
+    {
+        id: "core-help",
+        name: "core!help",
+        category: "music",
+        description: "Mostra a lista rápida dos comandos de música no chat.",
+        permission: "Membros",
+        example: "core!help",
+    },
+
+    // ─── IA & SERVIDOR ───────────────────────────────────────────────
+    {
+        id: "construir-servidor",
         name: "/construir-servidor",
-        description: "Cria uma estrutura completa de cargos, categorias e canais com IA. Mostra preview antes de aplicar.",
+        category: "ia",
+        description: "Monta canais, categorias e cargos do zero usando IA a partir da sua ideia.",
         permission: "Administrador",
+        example: '/construir-servidor tema:"Comunidade de games com área VIP"',
         options: [
-            { name: "tema", required: true, type: "STRING", description: "Descrição livre do servidor. Ex: \"Comunidade Gaming com VIP\"" },
-            { name: "estilo", type: "CHOICE", description: "gaming / comunidade / rpg / educacional / empresa / outro" },
-            { name: "tamanho", type: "CHOICE", description: "enxuto (~10 canais) / médio (~20) / completo (~30+)" },
-            { name: "idioma", type: "CHOICE", description: "Idioma dos nomes (pt / en / es)" },
-            { name: "considerar_existente", type: "BOOLEAN", description: "Se true (padrão), a IA evita duplicar canais/cargos existentes" },
-        ],
-        example: "/construir-servidor tema:\"servidor de RPG medieval\" estilo:rpg tamanho:medio",
-        notes: [
-            "A IA gera um plano e mostra preview com botões Confirmar / Regerar / Cancelar.",
-            "Você tem 5 minutos para confirmar antes do preview expirar.",
+            { name: "tema", required: true, description: "Como você quer que seu servidor seja." },
+            { name: "estilo", required: false, description: "gaming, comunidade, rpg, educacional ou outro." },
+            { name: "tamanho", required: false, description: "enxuto (~10), medio (~20) ou completo (~30+)." },
         ],
     },
     {
+        id: "desfazer-servidor",
         name: "/desfazer-servidor",
-        description: "Reverte a última execução de /construir-servidor — apaga os recursos criados.",
+        category: "ia",
+        description: "Apaga apenas os canais e cargos criados pelo último /construir-servidor (até 24h).",
         permission: "Administrador",
-        notes: [
-            "Funciona até 24h após a geração.",
-            "Apaga apenas o que o bot criou; canais/cargos preexistentes não são tocados.",
-        ],
+        example: "/desfazer-servidor",
     },
     {
+        id: "ajustar-servidor",
         name: "/ajustar-servidor",
-        description: "Modifica canais e cargos via linguagem natural.",
+        category: "ia",
+        description: "Cria, renomeia ou organiza canais e cargos pedindo em texto normal.",
         permission: "Administrador",
-        options: [
-            { name: "acao", required: true, type: "STRING", description: "Ex: \"Adicionar canal de voz na categoria Gaming\"" },
-        ],
-        example: "/ajustar-servidor acao:\"criar cargo VIP em amarelo\"",
+        example: '/ajustar-servidor acao:"Criar canal de voz Duo 1 na categoria Gaming"',
+        options: [{ name: "acao", required: true, description: "O que você quer alterar no servidor." }],
     },
     {
+        id: "config-ia",
         name: "/config-ia",
-        description: "Configura como a IA do bot se comporta no servidor.",
+        category: "ia",
+        description: "Configura o canal onde a IA responde, o jeito dela falar e quem pode mandar comandos.",
         permission: "Administrador",
         subcommands: [
-            { name: "canal", description: "Define o canal onde a IA responde mensagens", options: [{ name: "canal", type: "CHANNEL", description: "Canal de texto" }] },
-            { name: "personalidade", description: "Define o prompt de sistema da IA", options: [{ name: "prompt", type: "STRING", description: "Ex: \"Você é sarcástico e adora trocadilhos\"" }] },
-            { name: "cargos", description: "Define cargos admin da IA", options: [{ name: "cargo1", type: "ROLE", description: "Primeiro cargo admin" }, { name: "cargo2", type: "ROLE", description: "Segundo cargo (opcional)" }] },
-            { name: "status", description: "Mostra as configurações atuais da IA" },
+            { name: "canal", description: "Escolhe o canal onde a IA conversa com os membros." },
+            { name: "personalidade", description: "Define o estilo das respostas da IA." },
+            { name: "cargos", description: "Define quais cargos podem pedir ações de admin para a IA." },
+            { name: "status", description: "Mostra como a IA está configurada agora." },
         ],
     },
     {
+        id: "ajuda-ia",
         name: "/ajuda-ia",
-        description: "Lista os comandos de IA disponíveis.",
+        category: "ia",
+        description: "Mostra um resumo rápido dos comandos de IA no chat.",
+        permission: "Membros",
+        example: "/ajuda-ia",
     },
-];
 
-const CALL_COMMANDS: Command[] = [
+    // ─── CALLS PRIVADAS ──────────────────────────────────────────────
     {
+        id: "call-criar",
         name: "/call criar",
-        description: "Cria sua call de voz privada na categoria configurada.",
-        notes: ["Você só pode ter uma call ativa por vez.", "A call é apagada automaticamente quando todos saem."],
+        category: "calls",
+        description: "Cria uma sala de voz só sua que some sozinha quando todo mundo sair.",
+        permission: "Membros",
+        example: "/call criar",
     },
     {
+        id: "call-convidar",
         name: "/call convidar",
-        description: "Permite que alguém entre na sua call.",
-        options: [{ name: "usuario", required: true, type: "USER", description: "Usuário a convidar" }],
+        category: "calls",
+        description: "Libera um amigo para entrar na sua call privada.",
+        permission: "Dono da Call",
+        example: "/call convidar usuario:@Lucas",
+        options: [{ name: "usuario", required: true, description: "Pessoa que você quer convidar." }],
     },
     {
+        id: "call-expulsar",
         name: "/call expulsar",
-        description: "Remove alguém da sua call.",
-        options: [{ name: "usuario", required: true, type: "USER", description: "Usuário a expulsar" }],
+        category: "calls",
+        description: "Tira alguém da sua call privada.",
+        permission: "Dono da Call",
+        example: "/call expulsar usuario:@Membro",
+        options: [{ name: "usuario", required: true, description: "Pessoa que você quer remover." }],
     },
     {
+        id: "call-bloquear",
         name: "/call bloquear",
-        description: "Bloqueia a call (só entram convidados).",
+        category: "calls",
+        description: "Tranca a call para ninguém novo entrar sem convite.",
+        permission: "Dono da Call",
+        example: "/call bloquear",
     },
     {
+        id: "call-desbloquear",
         name: "/call desbloquear",
-        description: "Permite que qualquer um entre na call.",
+        category: "calls",
+        description: "Destranca a call para qualquer membro entrar.",
+        permission: "Dono da Call",
+        example: "/call desbloquear",
     },
     {
+        id: "call-limite",
         name: "/call limite",
-        description: "Define o limite de usuários simultâneos.",
-        options: [{ name: "quantidade", required: true, type: "INTEGER", description: "0 = sem limite" }],
+        category: "calls",
+        description: "Define quantas pessoas cabem na sua call privada.",
+        permission: "Dono da Call",
+        example: "/call limite quantidade:4",
+        options: [{ name: "quantidade", required: true, description: "Número de vagas (0 = sem limite)." }],
     },
-];
 
-const SPACE_COMMANDS: Command[] = [
-    { name: "/apod", description: "Mostra a Imagem Astronômica do Dia (NASA)." },
-    { name: "/spacex", description: "Mostra o próximo lançamento da SpaceX." },
-    { name: "/iss", description: "Mostra a localização atual da Estação Espacial Internacional." },
-    { name: "/mars", description: "Foto recente do rover em Marte." },
-    { name: "/spacenews", description: "Notícia espacial recente." },
-    { name: "/spacefact", description: "Curiosidade aleatória sobre o espaço." },
-];
-
-const TICKET_COMMANDS: Command[] = [
+    // ─── TICKETS ─────────────────────────────────────────────────────
     {
+        id: "ticket-painel",
         name: "/ticket-painel",
-        description: "Envia o painel de tickets no canal atual. Configure as categorias e o visual no painel web antes.",
+        category: "tickets",
+        description: "Envia o painel com botões para os membros abrirem tickets privados de suporte.",
         permission: "Administrador",
+        example: "/ticket-painel",
+    },
+
+    // ─── EXTRAS / ESPAÇO ─────────────────────────────────────────────
+    {
+        id: "space-apod",
+        name: "/apod",
+        category: "space",
+        description: "Mostra a foto do dia da NASA.",
+        permission: "Membros",
+        example: "/apod",
+    },
+    {
+        id: "space-spacex",
+        name: "/spacex",
+        category: "space",
+        description: "Mostra o próximo lançamento da SpaceX.",
+        permission: "Membros",
+        example: "/spacex",
+    },
+    {
+        id: "space-iss",
+        name: "/iss",
+        category: "space",
+        description: "Mostra onde a Estação Espacial Internacional está agora.",
+        permission: "Membros",
+        example: "/iss",
+    },
+    {
+        id: "space-mars",
+        name: "/mars",
+        category: "space",
+        description: "Mostra uma foto real tirada pelos robôs da NASA em Marte.",
+        permission: "Membros",
+        example: "/mars",
+    },
+    {
+        id: "space-spacenews",
+        name: "/spacenews",
+        category: "space",
+        description: "Traz notícias recentes sobre o espaço.",
+        permission: "Membros",
+        example: "/spacenews",
+    },
+    {
+        id: "space-spacefact",
+        name: "/spacefact",
+        category: "space",
+        description: "Conta uma curiosidade aleatória sobre o universo.",
+        permission: "Membros",
+        example: "/spacefact",
     },
 ];
+
+const CHAT_AI_EXAMPLES = [
+    { label: "Castigo", syntax: "ia, coloque @usuario de castigo por 10 minutos por spam" },
+    { label: "Limpar chat", syntax: "ia, limpe 25 mensagens" },
+    { label: "Criar canal", syntax: "ia, crie um canal de texto chamado #avisos" },
+    { label: "Trancar canal", syntax: "ia, tranque o canal #geral" },
+    { label: "Dar cargo", syntax: "ia, dê o cargo VIP para @usuario" },
+    { label: "Anúncio", syntax: "ia, faça um anúncio em #avisos dizendo que tem evento às 20h" },
+];
+
+function CopyButton({ text }: { text: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        toast.success(`Copiado: ${text.split(" ")[0]}`);
+        setTimeout(() => setCopied(false), 1800);
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCopy}
+            className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors flex items-center gap-1 text-xs cursor-pointer shrink-0"
+            title="Copiar comando"
+        >
+            {copied ? (
+                <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-[10px] text-emerald-400 font-mono">Copiado!</span>
+                </>
+            ) : (
+                <Copy className="w-3.5 h-3.5" />
+            )}
+        </button>
+    );
+}
 
 function CommandCard({ cmd }: { cmd: Command }) {
     return (
-        <div className="border border-white/10 rounded-xl p-5 bg-[#0A0A0C] space-y-3">
+        <div className="border border-white/10 rounded-2xl p-5 bg-[#0A0A0E] hover:border-violet-500/40 transition-all duration-200 space-y-3">
             <div className="flex items-start justify-between gap-3 flex-wrap">
-                <code className="text-violet-300 font-mono text-base font-medium">{cmd.name}</code>
-                {cmd.permission && (
-                    <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200">
-                        {cmd.permission}
-                    </span>
-                )}
+                <div className="flex items-center gap-2">
+                    <code className="text-violet-300 font-mono text-sm sm:text-base font-semibold">{cmd.name}</code>
+                    <CopyButton text={cmd.example || cmd.name} />
+                </div>
+
+                <span
+                    className={`text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full font-semibold border ${
+                        cmd.permission === "Administrador"
+                            ? "bg-red-500/10 border-red-500/30 text-red-300"
+                            : cmd.permission === "Dono da Call"
+                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                    }`}
+                >
+                    {cmd.permission}
+                </span>
             </div>
-            <p className="text-sm text-zinc-300">{cmd.description}</p>
+
+            <p className="text-sm text-zinc-300 leading-relaxed">{cmd.description}</p>
 
             {cmd.options && cmd.options.length > 0 && (
-                <div className="space-y-1.5">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Parâmetros</div>
-                    <table className="w-full text-xs">
-                        <tbody>
-                            {cmd.options.map(opt => (
-                                <tr key={opt.name} className="border-b border-white/5 last:border-0">
-                                    <td className="py-1.5 pr-3 font-mono text-violet-300 whitespace-nowrap align-top">
-                                        {opt.name}
-                                        {opt.required && <span className="text-red-400">*</span>}
-                                    </td>
-                                    <td className="py-1.5 pr-3 text-zinc-500 align-top">
-                                        <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/5 text-[10px]">{opt.type}</span>
-                                    </td>
-                                    <td className="py-1.5 text-zinc-400 align-top">{opt.description}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="space-y-1.5 pt-1 border-t border-white/5">
+                    {cmd.options.map((opt) => (
+                        <div key={opt.name} className="text-xs flex items-baseline gap-2">
+                            <code className="text-violet-300 font-mono shrink-0">
+                                {opt.name}
+                                {opt.required ? "*" : ""}
+                            </code>
+                            <span className="text-zinc-400">{opt.description}</span>
+                        </div>
+                    ))}
                 </div>
             )}
 
-            {cmd.subcommands && (
-                <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold">Subcomandos</div>
-                    {cmd.subcommands.map(sub => (
-                        <div key={sub.name} className="pl-3 border-l border-violet-500/20 space-y-1">
-                            <div className="text-xs font-mono text-violet-300">{cmd.name} {sub.name}</div>
-                            <div className="text-xs text-zinc-400">{sub.description}</div>
-                            {sub.options && sub.options.length > 0 && (
-                                <div className="text-[11px] text-zinc-500">
-                                    Parâmetros: {sub.options.map(o => o.name).join(", ")}
-                                </div>
-                            )}
+            {cmd.subcommands && cmd.subcommands.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {cmd.subcommands.map((sub) => (
+                        <div key={sub.name} className="rounded-xl bg-black/40 border border-white/5 p-2.5 space-y-1">
+                            <div className="flex items-center justify-between">
+                                <code className="text-xs font-mono text-violet-300">
+                                    {cmd.name} {sub.name}
+                                </code>
+                                <CopyButton text={`${cmd.name} ${sub.name}`} />
+                            </div>
+                            <p className="text-[11px] text-zinc-400">{sub.description}</p>
                         </div>
                     ))}
                 </div>
             )}
 
             {cmd.example && (
-                <div>
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold mb-1">Exemplo</div>
-                    <code className="block text-xs font-mono text-zinc-300 bg-black/40 border border-white/5 rounded px-3 py-2">
-                        {cmd.example}
-                    </code>
+                <div className="flex items-center justify-between bg-black/50 border border-white/5 rounded-xl px-3 py-2">
+                    <code className="text-xs font-mono text-zinc-300 overflow-x-auto">{cmd.example}</code>
+                    <CopyButton text={cmd.example} />
                 </div>
-            )}
-
-            {cmd.notes && cmd.notes.length > 0 && (
-                <ul className="text-xs text-zinc-400 space-y-1 pl-4 list-disc">
-                    {cmd.notes.map((n, i) => <li key={i}>{n}</li>)}
-                </ul>
             )}
         </div>
     );
 }
 
-function Section({ id, icon: Icon, title, children }: { id: string; icon: any; title: string; children: React.ReactNode }) {
-    return (
-        <section id={id} className="scroll-mt-24 space-y-4">
-            <div className="flex items-center gap-3 pt-4">
-                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-violet-500/20 to-fuchsia-500/20 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-violet-400" />
-                </div>
-                <h2 className="text-2xl font-serif font-medium text-white">{title}</h2>
-            </div>
-            <div className="space-y-3">{children}</div>
-        </section>
-    );
-}
-
 export default function DocsPage() {
+    const locale = useLocale();
+    const [searchQuery, setSearchQuery] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState<string>("all");
+    const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+    const filteredCommands = useMemo(() => {
+        return ALL_COMMANDS.filter((cmd) => {
+            const matchesCategory = selectedCategory === "all" || cmd.category === selectedCategory;
+            const query = searchQuery.toLowerCase().trim();
+            if (!query) return matchesCategory;
+
+            const matchesSearch =
+                cmd.name.toLowerCase().includes(query) ||
+                cmd.description.toLowerCase().includes(query) ||
+                cmd.example?.toLowerCase().includes(query);
+
+            return matchesCategory && matchesSearch;
+        });
+    }, [searchQuery, selectedCategory]);
+
+    const navigationLinks = [
+        { label: "Começar", href: "#inicio", icon: Sparkles },
+        { label: "Ajuda (/helpcore)", href: "#helpcore-guide", icon: BookOpen },
+        { label: "Música (core!)", href: "#sistema-musica", icon: Disc },
+        { label: "Lista de Comandos", href: "#comandos-slash", icon: Terminal },
+        { label: "Falar com a IA", href: "#comandos-chat-ia", icon: MessageSquare },
+        { label: "Dúvidas Rápidas", href: "#faq", icon: HelpCircle },
+    ];
+
+    const categoryFilters = [
+        { id: "all", label: "Todos", icon: Terminal },
+        { id: "helpcore", label: "/helpcore", icon: BookOpen },
+        { id: "music", label: "Música (core!)", icon: Disc },
+        { id: "ia", label: "IA & Servidor", icon: Server },
+        { id: "calls", label: "Calls Privadas", icon: Phone },
+        { id: "tickets", label: "Tickets", icon: Ticket },
+        { id: "space", label: "Espaço", icon: Rocket },
+    ];
+
+    const musicCommands = ALL_COMMANDS.filter((c) => c.category === "music");
+
     return (
-        <div className="min-h-screen bg-[#060609] text-white print:bg-white print:text-black">
-            {/* Header — escondido no PDF */}
-            <nav className="sticky top-0 z-50 bg-[#060609]/80 backdrop-blur-md border-b border-white/5 print:hidden">
-                <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <Link href="/" className="flex items-center gap-2 text-sm font-medium text-white hover:text-violet-300 transition-colors">
-                        <Bot className="w-5 h-5" />
-                        CoreBot
-                    </Link>
-                    <button
-                        onClick={() => window.print()}
-                        className="text-xs uppercase tracking-wider px-4 py-2 rounded-md bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/30 text-violet-200 transition-colors flex items-center gap-2"
-                    >
-                        <Download className="w-3 h-3" /> Baixar PDF
-                    </button>
+        <div className="min-h-screen bg-[#060609] text-white flex flex-col font-sans">
+            {/* Top Navigation */}
+            <nav className="sticky top-0 z-50 bg-[#060609]/90 backdrop-blur-md border-b border-white/5">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+                            className="p-2 rounded-lg bg-white/5 border border-white/10 text-zinc-400 hover:text-white lg:hidden cursor-pointer"
+                            aria-label="Abrir menu"
+                        >
+                            {mobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                        </button>
+
+                        <Link href={`/${locale}`} className="flex items-center gap-2.5">
+                            <div className="relative w-8 h-8 shrink-0">
+                                <Image src="/CoreBot.png" alt="CoreBot Logo" fill className="object-contain" priority />
+                            </div>
+                            <span className="font-semibold text-sm text-white">CoreBot • Guia</span>
+                        </Link>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                        <Link
+                            href={`/${locale}`}
+                            className="text-xs px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5"
+                        >
+                            <Home className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Início</span>
+                        </Link>
+                        <Link
+                            href={`/${locale}/dashboard`}
+                            className="text-xs px-3.5 py-2 rounded-lg bg-white text-black font-semibold hover:bg-zinc-200 transition-colors flex items-center gap-1.5"
+                        >
+                            <LayoutDashboard className="w-3.5 h-3.5" />
+                            <span>Painel</span>
+                        </Link>
+                    </div>
                 </div>
             </nav>
 
-            <main className="max-w-5xl mx-auto px-6 py-10 space-y-10 print:py-6">
-                {/* Capa */}
-                <header className="space-y-4 pb-8 border-b border-white/10">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs text-violet-300 uppercase tracking-wider font-medium">
-                        <BookOpen className="w-3 h-3" /> Manual completo
+            <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 flex gap-8 flex-1">
+                {/* Desktop Sidebar */}
+                <aside className="hidden lg:block w-60 shrink-0 sticky top-24 self-start space-y-6 pr-3 border-r border-white/5">
+                    <div className="space-y-1">
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold px-3 mb-2">
+                            Nesta Página
+                        </div>
+                        {navigationLinks.map((item) => {
+                            const ItemIcon = item.icon;
+                            return (
+                                <a
+                                    key={item.href}
+                                    href={item.href}
+                                    className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-zinc-300 hover:text-white hover:bg-white/5 transition-colors"
+                                >
+                                    <ItemIcon className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                                    <span>{item.label}</span>
+                                </a>
+                            );
+                        })}
                     </div>
-                    <h1 className="text-4xl md:text-5xl font-serif font-medium">Documentação do CoreBot</h1>
-                    <p className="text-zinc-400 text-lg max-w-3xl">
-                        Bot inteligente para gerenciamento de servidores Discord. Construa estruturas com IA,
-                        modere com regras flexíveis, gerencie tickets, e mais — tudo via comandos slash e painel web.
-                    </p>
-                    <p className="text-xs text-zinc-600 pt-2">Última atualização: maio/2026 · Versão 1.0</p>
-                </header>
 
-                {/* Sumário */}
-                <aside className="bg-[#0A0A0C] border border-white/10 rounded-xl p-5 print:break-inside-avoid">
-                    <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-3">Sumário</div>
-                    <ol className="space-y-1.5 text-sm text-zinc-300">
-                        <li><a href="#inicio" className="hover:text-violet-300">1. Começando</a></li>
-                        <li><a href="#painel" className="hover:text-violet-300">2. Painel Web</a></li>
-                        <li><a href="#comandos-ia" className="hover:text-violet-300">3. Comandos de IA</a></li>
-                        <li><a href="#comandos-call" className="hover:text-violet-300">4. Calls Privadas</a></li>
-                        <li><a href="#comandos-ticket" className="hover:text-violet-300">5. Sistema de Tickets</a></li>
-                        <li><a href="#comandos-espaco" className="hover:text-violet-300">6. Espaciais (Bonus)</a></li>
-                        <li><a href="#comandos-custom" className="hover:text-violet-300">7. Comandos Personalizados</a></li>
-                        <li><a href="#modulos" className="hover:text-violet-300">8. Módulos Automáticos</a></li>
-                        <li><a href="#faq" className="hover:text-violet-300">9. Perguntas Frequentes</a></li>
-                    </ol>
+                    <div className="space-y-1 pt-3 border-t border-white/5">
+                        <div className="text-[10px] uppercase tracking-wider text-zinc-500 font-semibold px-3 mb-2">
+                            Filtrar Comandos
+                        </div>
+                        {categoryFilters.map((cat) => {
+                            const CatIcon = cat.icon;
+                            const isSelected = selectedCategory === cat.id;
+                            return (
+                                <button
+                                    key={cat.id}
+                                    type="button"
+                                    onClick={() => setSelectedCategory(cat.id)}
+                                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                                        isSelected
+                                            ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
+                                            : "text-zinc-400 hover:text-white hover:bg-white/5"
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <CatIcon className="w-3.5 h-3.5 text-violet-400" />
+                                        <span>{cat.label}</span>
+                                    </div>
+                                    {isSelected && <ChevronRight className="w-3.5 h-3.5 text-violet-400" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="space-y-1 pt-3 border-t border-white/5">
+                        <Link
+                            href={`/${locale}#pricing`}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-white/5"
+                        >
+                            <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Ver Planos</span>
+                        </Link>
+                        <Link
+                            href={`/${locale}#community`}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-white/5"
+                        >
+                            <Users className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Discord Oficial</span>
+                        </Link>
+                    </div>
                 </aside>
 
-                {/* 1. Começando */}
-                <Section id="inicio" icon={Sparkles} title="1. Começando">
-                    <div className="space-y-4 text-sm text-zinc-300 leading-relaxed">
-                        <p>Para usar o CoreBot, siga estes três passos:</p>
-                        <ol className="list-decimal pl-5 space-y-2">
-                            <li><strong>Adicione o bot</strong> ao seu servidor Discord usando o botão "Adicionar ao Discord" na página inicial.</li>
-                            <li><strong>Conceda permissões</strong> ao bot: Gerenciar Canais, Gerenciar Cargos, Gerenciar Mensagens, Castigar Membros, Enviar Mensagens e Embed Links.</li>
-                            <li><strong>Acesse o painel web</strong> em <code className="text-violet-300">corebot.up.railway.app</code> e faça login com Discord para configurar os módulos visualmente.</li>
-                        </ol>
-                        <p className="text-zinc-400 text-xs mt-4">
-                            <strong>Importante:</strong> ative os Privileged Intents "Server Members Intent" e "Message Content Intent"
-                            no Developer Portal do Discord (se você gerencia o bot) — sem eles, eventos de entrada/saída e leitura de mensagens não funcionam.
-                        </p>
+                {/* Mobile Drawer */}
+                {mobileSidebarOpen && (
+                    <div className="fixed inset-0 z-40 lg:hidden">
+                        <div className="fixed inset-0 bg-black/80" onClick={() => setMobileSidebarOpen(false)} />
+                        <div className="fixed inset-y-0 left-0 w-72 bg-[#0A0A0C] border-r border-white/10 p-6 overflow-y-auto space-y-6 z-50">
+                            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                                <span className="font-semibold text-sm text-white">Menu</span>
+                                <button type="button" onClick={() => setMobileSidebarOpen(false)} className="text-zinc-400 hover:text-white">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="space-y-1">
+                                {navigationLinks.map((item) => {
+                                    const ItemIcon = item.icon;
+                                    return (
+                                        <a
+                                            key={item.href}
+                                            href={item.href}
+                                            onClick={() => setMobileSidebarOpen(false)}
+                                            className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-zinc-300 hover:bg-white/5"
+                                        >
+                                            <ItemIcon className="w-3.5 h-3.5 text-violet-400" />
+                                            <span>{item.label}</span>
+                                        </a>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
-                </Section>
+                )}
 
-                {/* 2. Painel Web */}
-                <Section id="painel" icon={Settings} title="2. Painel Web">
-                    <p className="text-sm text-zinc-300">
-                        O painel web concentra todas as configurações dos módulos. Após o login, selecione um servidor para acessar:
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {[
-                            { icon: Bot, name: "CoreBot AI", desc: "Personalidade, canal, gatilhos e temperatura da IA." },
-                            { icon: Hand, name: "Boas-vindas", desc: "Mensagens de entrada/saída com banner customizável e auto-role." },
-                            { icon: Shield, name: "AutoMod", desc: "Palavras proibidas, anti-link, anti-spam, ações e logs." },
-                            { icon: Ticket, name: "Tickets", desc: "Categorias, painel customizado, cargo de suporte, transcripts." },
-                            { icon: Wand2, name: "Comandos AI", desc: "Crie comandos slash com lógica complexa descritos em linguagem natural." },
-                            { icon: Phone, name: "Calls Privadas", desc: "Categoria, cargos permitidos e cargo gerente." },
-                            { icon: Settings, name: "Configurações", desc: "Status do bot, acesso, auditoria, preferências e zona perigosa." },
-                        ].map(item => (
-                            <div key={item.name} className="border border-white/10 rounded-xl p-4 bg-[#0A0A0C] flex items-start gap-3">
-                                <item.icon className="w-5 h-5 text-violet-400 shrink-0 mt-0.5" />
-                                <div>
-                                    <div className="text-sm font-medium text-white">{item.name}</div>
-                                    <div className="text-xs text-zinc-400 mt-0.5">{item.desc}</div>
+                {/* Main Content */}
+                <main className="flex-1 min-w-0 space-y-10">
+                    <header className="space-y-3">
+                        <h1 className="text-3xl sm:text-5xl font-serif font-medium tracking-tight">
+                            Como usar o CoreBot
+                        </h1>
+                        <p className="text-zinc-400 text-sm sm:text-base max-w-2xl">
+                            Guia rápido dos comandos no Discord. Copie qualquer comando com um clique e cole no seu servidor.
+                        </p>
+                    </header>
+
+                    {/* Search & Filter */}
+                    <div className="bg-[#0A0A0E] border border-white/10 rounded-2xl p-4 space-y-3">
+                        <div className="relative">
+                            <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Buscar comando (ex: play, skip, call, ticket, helpcore)..."
+                                className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                            {categoryFilters.map((cat) => {
+                                const CatIcon = cat.icon;
+                                return (
+                                    <button
+                                        key={cat.id}
+                                        type="button"
+                                        onClick={() => setSelectedCategory(cat.id)}
+                                        className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors border flex items-center gap-1.5 cursor-pointer ${
+                                            selectedCategory === cat.id
+                                                ? "bg-violet-600 text-white border-violet-500"
+                                                : "bg-white/5 text-zinc-400 border-white/5 hover:bg-white/10 hover:text-white"
+                                        }`}
+                                    >
+                                        <CatIcon className="w-3.5 h-3.5" />
+                                        <span>{cat.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* 1. Começar */}
+                    <section id="inicio" className="scroll-mt-24 space-y-4">
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 text-violet-400" />
+                            <span>Comece em 3 passos</span>
+                        </h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="border border-white/10 rounded-2xl p-5 bg-[#0A0A0E] space-y-2">
+                                <span className="inline-flex w-7 h-7 rounded-lg bg-violet-500/20 text-violet-300 font-bold items-center justify-center text-xs">
+                                    1
+                                </span>
+                                <h3 className="font-semibold text-white text-sm">Entre no Painel</h3>
+                                <p className="text-xs text-zinc-400">Faça login com seu Discord e adicione o bot no seu servidor.</p>
+                            </div>
+                            <div className="border border-white/10 rounded-2xl p-5 bg-[#0A0A0E] space-y-2">
+                                <span className="inline-flex w-7 h-7 rounded-lg bg-violet-500/20 text-violet-300 font-bold items-center justify-center text-xs">
+                                    2
+                                </span>
+                                <h3 className="font-semibold text-white text-sm">Digite /helpcore</h3>
+                                <p className="text-xs text-zinc-400">Veja todos os comandos direto no chat do Discord quando quiser.</p>
+                            </div>
+                            <div className="border border-white/10 rounded-2xl p-5 bg-[#0A0A0E] space-y-2">
+                                <span className="inline-flex w-7 h-7 rounded-lg bg-violet-500/20 text-violet-300 font-bold items-center justify-center text-xs">
+                                    3
+                                </span>
+                                <h3 className="font-semibold text-white text-sm">Toque músicas</h3>
+                                <p className="text-xs text-zinc-400">Entre em uma call e mande <code className="text-violet-300 font-mono">core!play</code>.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* 2. /helpcore */}
+                    <section id="helpcore-guide" className="scroll-mt-24 space-y-4 pt-6 border-t border-white/10">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <BookOpen className="w-5 h-5 text-violet-400" />
+                                <span>Ajuda rápida no Discord (/helpcore)</span>
+                            </h2>
+                            <div className="flex items-center gap-2 bg-black/50 border border-white/10 rounded-xl px-3 py-1.5">
+                                <code className="text-xs font-mono text-violet-300">/helpcore</code>
+                                <CopyButton text="/helpcore" />
+                            </div>
+                        </div>
+                        <p className="text-sm text-zinc-400">
+                            Quando alguém digita <code className="text-violet-300 font-mono">/helpcore</code> no Discord, aparece um menu com 7 categorias para escolher o que quer aprender (Visão Geral, Música, IA, Calls, Tickets, Moderação e Comandos Custom).
+                        </p>
+                    </section>
+
+                    {/* 3. Música (core!) */}
+                    <section id="sistema-musica" className="scroll-mt-24 space-y-4 pt-6 border-t border-white/10">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Headphones className="w-5 h-5 text-violet-400" />
+                                <span>Música na Call (prefixo core!)</span>
+                            </h2>
+                            <span className="text-xs text-zinc-400">Entre em uma call e digite no chat</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {musicCommands.map((cmd) => (
+                                <div
+                                    key={cmd.id}
+                                    className="rounded-2xl bg-[#0A0A0E] border border-white/10 p-4 flex items-start justify-between gap-3"
+                                >
+                                    <div className="space-y-1 min-w-0">
+                                        <code className="text-xs sm:text-sm font-mono font-semibold text-violet-300 block">
+                                            {cmd.name}
+                                        </code>
+                                        <p className="text-xs text-zinc-400">{cmd.description}</p>
+                                    </div>
+                                    <CopyButton text={cmd.example || cmd.name} />
                                 </div>
-                            </div>
-                        ))}
-                    </div>
-                </Section>
+                            ))}
+                        </div>
+                    </section>
 
-                {/* 3. Comandos de IA */}
-                <Section id="comandos-ia" icon={Terminal} title="3. Comandos de IA">
-                    {CORE_COMMANDS.map(cmd => <CommandCard key={cmd.name} cmd={cmd} />)}
-                </Section>
+                    {/* 4. Catálogo */}
+                    <section id="comandos-slash" className="scroll-mt-24 space-y-4 pt-6 border-t border-white/10">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                <Terminal className="w-5 h-5 text-violet-400" />
+                                <span>Todos os Comandos</span>
+                            </h2>
+                            <span className="text-xs text-zinc-400">{filteredCommands.length} resultados</span>
+                        </div>
 
-                {/* 4. Calls */}
-                <Section id="comandos-call" icon={Phone} title="4. Calls Privadas">
-                    <p className="text-sm text-zinc-400">
-                        Comandos para gerenciar sua própria call de voz temporária.
-                        Requer configuração prévia no painel (Calls Privadas → Categoria e cargos).
-                    </p>
-                    {CALL_COMMANDS.map(cmd => <CommandCard key={cmd.name} cmd={cmd} />)}
-                </Section>
+                        <div className="grid grid-cols-1 gap-3">
+                            {filteredCommands.length > 0 ? (
+                                filteredCommands.map((cmd) => <CommandCard key={cmd.id} cmd={cmd} />)
+                            ) : (
+                                <div className="border border-white/10 rounded-2xl p-8 text-center text-sm text-zinc-500">
+                                    Nenhum comando encontrado para essa busca.
+                                </div>
+                            )}
+                        </div>
+                    </section>
 
-                {/* 5. Tickets */}
-                <Section id="comandos-ticket" icon={Ticket} title="5. Sistema de Tickets">
-                    <p className="text-sm text-zinc-400">
-                        O fluxo principal é configurar no painel e enviar o painel no canal desejado.
-                        Cada categoria gera um botão; ao clicar, um canal privado é criado para o usuário e a equipe.
-                    </p>
-                    {TICKET_COMMANDS.map(cmd => <CommandCard key={cmd.name} cmd={cmd} />)}
-                </Section>
-
-                {/* 6. Espaciais */}
-                <Section id="comandos-espaco" icon={Sparkles} title="6. Espaciais (Bonus)">
-                    <p className="text-sm text-zinc-400">Comandos divertidos integrados com APIs públicas da NASA e SpaceX.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {SPACE_COMMANDS.map(cmd => (
-                            <div key={cmd.name} className="border border-white/10 rounded-xl p-4 bg-[#0A0A0C]">
-                                <code className="text-violet-300 font-mono text-sm">{cmd.name}</code>
-                                <p className="text-xs text-zinc-400 mt-1">{cmd.description}</p>
-                            </div>
-                        ))}
-                    </div>
-                </Section>
-
-                {/* 7. Comandos personalizados */}
-                <Section id="comandos-custom" icon={Wand2} title="7. Comandos Personalizados">
-                    <div className="text-sm text-zinc-300 space-y-3">
-                        <p>
-                            No painel <strong>Comandos AI</strong> você cria comandos slash únicos para o seu servidor
-                            descrevendo em linguagem natural. A IA gera o schema, mostra preview, e ao salvar o comando fica disponível no Discord.
+                    {/* 5. Falar com a IA */}
+                    <section id="comandos-chat-ia" className="scroll-mt-24 space-y-4 pt-6 border-t border-white/10">
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <Bot className="w-5 h-5 text-violet-400" />
+                            <span>Pedir coisas para a IA no chat</span>
+                        </h2>
+                        <p className="text-sm text-zinc-400">
+                            Se você for admin, pode falar direto no chat usando <code className="text-violet-300 font-mono">ia, ...</code> ou marcando o bot:
                         </p>
-                        <div className="border border-violet-500/20 rounded-xl p-4 bg-violet-500/5 space-y-2">
-                            <div className="text-xs uppercase tracking-wider text-violet-300 font-semibold">Ações disponíveis</div>
-                            <ul className="text-xs text-zinc-300 space-y-1 pl-5 list-disc">
-                                <li><strong>REPLY</strong> — responde com texto fixo (suporta variáveis {"{opção}"})</li>
-                                <li><strong>AI_REPLY</strong> — responde usando IA com prompt customizado</li>
-                                <li><strong>ADD_ROLE / REMOVE_ROLE</strong> — adiciona ou remove cargos</li>
-                                <li><strong>SET_NICKNAME</strong> — muda o apelido de um membro</li>
-                                <li><strong>SEND_DM / SEND_CHANNEL</strong> — envia mensagem privada ou em outro canal</li>
-                                <li><strong>KICK / BAN</strong> — modera usuários</li>
-                                <li><strong>RANDOM_IMAGE</strong> — envia um GIF de uma categoria (hug, kiss, slap, etc)</li>
-                                <li><strong>EXTERNAL_API</strong> — integração com APIs externas (NASA, OMDB, Weather)</li>
-                            </ul>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {CHAT_AI_EXAMPLES.map((item) => (
+                                <div
+                                    key={item.label}
+                                    className="rounded-2xl bg-[#0A0A0E] border border-white/10 p-4 flex items-center justify-between gap-3"
+                                >
+                                    <div className="min-w-0 space-y-1">
+                                        <span className="text-[11px] font-semibold text-zinc-400 block">{item.label}</span>
+                                        <code className="text-xs font-mono text-violet-300 block truncate">{item.syntax}</code>
+                                    </div>
+                                    <CopyButton text={item.syntax} />
+                                </div>
+                            ))}
                         </div>
-                        <p className="text-xs text-zinc-400">
-                            Exemplo de prompt: <em>"Crie um comando /vip que dê o cargo Membro VIP para quem usar e mande
-                            uma mensagem de boas-vindas com um embed bonito."</em>
-                        </p>
-                    </div>
-                </Section>
+                    </section>
 
-                {/* 8. Módulos automáticos */}
-                <Section id="modulos" icon={Shield} title="8. Módulos Automáticos">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                        <div className="border border-white/10 rounded-xl p-4 bg-[#0A0A0C] space-y-2">
-                            <h3 className="font-medium text-white flex items-center gap-2"><Hand className="w-4 h-4 text-blue-400" /> Boas-vindas e Saída</h3>
-                            <p className="text-zinc-400 text-xs">Banner customizado com avatar, mensagem e fundo. Variáveis: <code className="text-violet-300">{"{user}"}</code>, <code className="text-violet-300">{"{server}"}</code>, <code className="text-violet-300">{"{memberCount}"}</code>.</p>
-                        </div>
-                        <div className="border border-white/10 rounded-xl p-4 bg-[#0A0A0C] space-y-2">
-                            <h3 className="font-medium text-white flex items-center gap-2"><Shield className="w-4 h-4 text-red-400" /> AutoMod</h3>
-                            <p className="text-zinc-400 text-xs">Detecta links, CAPS, spam, palavras proibidas e infrações via IA. Ações: apagar, timeout, kick, ban. Cargos podem ser bypass.</p>
-                        </div>
-                        <div className="border border-white/10 rounded-xl p-4 bg-[#0A0A0C] space-y-2">
-                            <h3 className="font-medium text-white flex items-center gap-2"><Bot className="w-4 h-4 text-purple-400" /> Chat com IA</h3>
-                            <p className="text-zinc-400 text-xs">A IA responde quando mencionada ou quando a mensagem começa com um dos gatilhos configurados. Suporta análise de imagens.</p>
-                        </div>
-                        <div className="border border-white/10 rounded-xl p-4 bg-[#0A0A0C] space-y-2">
-                            <h3 className="font-medium text-white flex items-center gap-2"><Phone className="w-4 h-4 text-cyan-400" /> Calls Auto-Delete</h3>
-                            <p className="text-zinc-400 text-xs">Canais de voz privados são apagados automaticamente quando ficam vazios.</p>
-                        </div>
-                    </div>
-                </Section>
-
-                {/* 9. FAQ */}
-                <Section id="faq" icon={BookOpen} title="9. Perguntas Frequentes">
-                    <div className="space-y-3 text-sm">
+                    {/* 6. FAQ */}
+                    <section id="faq" className="scroll-mt-24 space-y-3 pt-6 border-t border-white/10">
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <HelpCircle className="w-5 h-5 text-violet-400" />
+                            <span>Dúvidas rápidas</span>
+                        </h2>
                         {[
                             {
-                                q: "O bot não responde aos comandos. O que fazer?",
-                                a: "Verifique se o bot tem permissão de Enviar Mensagens no canal. Se for comando admin, confirme que você tem o cargo apropriado. Comandos globais novos podem levar até 1h para sincronizar — reinicie o cliente Discord (Ctrl+R) para forçar.",
+                                q: "Os comandos com / não aparecem no Discord. O que faço?",
+                                a: "Dê Ctrl + R no Discord (ou feche e abra no celular) e confira se o bot tem permissão de enviar mensagens no canal.",
                             },
                             {
-                                q: "Mensagens de boas-vindas não aparecem.",
-                                a: 'Ative o "Server Members Intent" no Discord Developer Portal. Sem essa flag o Discord nem envia o evento ao bot, independente da configuração.',
+                                q: "Como o bot faz para tocar música?",
+                                a: "Entre em qualquer canal de voz do servidor e digite core!play nome da música.",
                             },
                             {
-                                q: "/construir-servidor está demorando muito.",
-                                a: "Servidores grandes podem demorar 30-60s na fase de aplicar (criar 30+ canais com permissões). O embed mostra progresso em tempo real. Se passar de 2min sem nada, algo travou.",
+                                q: "As calls privadas somem sozinhas?",
+                                a: "Sim! Assim que todo mundo sair da sala criada com /call criar, o canal é apagado sozinho.",
                             },
                             {
-                                q: "Posso desfazer um servidor gerado errado?",
-                                a: "Sim, use /desfazer-servidor em até 24h após a geração. Apaga só o que o bot criou nessa execução.",
-                            },
-                            {
-                                q: "Como removo o bot do servidor?",
-                                a: "No painel, Configurações → Zona Perigosa → Remover bot do servidor. Suas configurações ficam salvas para se o bot voltar.",
+                                q: "Por que o bot não consegue dar cargos ou banir alguém?",
+                                a: "Coloque o cargo do CoreBot acima dos cargos dos membros nas configurações de cargos do seu servidor.",
                             },
                         ].map((item, i) => (
-                            <details key={i} className="border border-white/10 rounded-xl bg-[#0A0A0C] p-4 group" open>
-                                <summary className="cursor-pointer font-medium text-white text-sm">{item.q}</summary>
-                                <p className="text-zinc-400 text-xs mt-2 leading-relaxed">{item.a}</p>
+                            <details key={i} className="border border-white/10 rounded-2xl bg-[#0A0A0E] p-4 group">
+                                <summary className="cursor-pointer font-medium text-white text-sm list-none flex items-center justify-between gap-2">
+                                    <span>{item.q}</span>
+                                    <ChevronRight className="w-4 h-4 text-zinc-500 group-open:rotate-90 transition-transform shrink-0" />
+                                </summary>
+                                <p className="text-zinc-400 text-xs mt-2.5 leading-relaxed">{item.a}</p>
                             </details>
                         ))}
-                    </div>
-                </Section>
+                    </section>
 
-                {/* Suporte */}
-                <section className="border border-violet-500/20 rounded-xl p-6 bg-violet-500/5 print:break-before-page">
-                    <h2 className="text-xl font-medium text-white mb-2">Precisa de ajuda?</h2>
-                    <p className="text-sm text-zinc-300 mb-4">
-                        Entre na comunidade oficial do CoreBot no Discord para suporte direto da equipe e da comunidade.
-                    </p>
-                    <Link
-                        href="/#community"
-                        className="inline-flex items-center gap-2 text-sm text-violet-200 hover:text-white transition-colors"
-                    >
-                        Acessar comunidade <ExternalLink className="w-3 h-3" />
-                    </Link>
-                </section>
-            </main>
-
-            {/* Estilo print: ajusta espaçamento e cores para PDF */}
-            <style jsx global>{`
-                @media print {
-                    body { background: white !important; color: black !important; }
-                    .bg-\\[\\#060609\\], .bg-\\[\\#0A0A0C\\] { background: white !important; }
-                    .text-white { color: #111 !important; }
-                    .text-zinc-300, .text-zinc-400 { color: #444 !important; }
-                    .text-zinc-500 { color: #666 !important; }
-                    .text-violet-300 { color: #6d28d9 !important; }
-                    .border-white\\/10, .border-white\\/5 { border-color: #ddd !important; }
-                    details { break-inside: avoid; }
-                    section { break-inside: avoid-page; }
-                }
-            `}</style>
+                    {/* Suporte */}
+                    <section className="border border-violet-500/20 rounded-2xl p-6 bg-linear-to-r from-violet-500/10 to-transparent flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                            <h2 className="text-base font-semibold text-white">Precisa de ajuda?</h2>
+                            <p className="text-xs text-zinc-400 mt-0.5">Tire suas dúvidas com a gente no Discord.</p>
+                        </div>
+                        <Link
+                            href={`/${locale}#community`}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors whitespace-nowrap"
+                        >
+                            <span>Entrar no Discord</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
+                    </section>
+                </main>
+            </div>
         </div>
     );
 }

@@ -1,32 +1,19 @@
 import { database } from "@shared/services/database";
 import { getBotGuildStatus } from "@/lib/discord-api";
-import { 
-    Bot, 
-    ShieldAlert, 
-    ShieldCheck, 
-    Ticket, 
-    Hand, 
-    Phone, 
-    ArrowRight, 
-    Settings, 
-    Activity, 
-    Sparkles, 
-    BookOpen, 
-    Terminal, 
-    CheckCircle2, 
-    AlertTriangle, 
-    BarChart3, 
-    Layers, 
-    Zap, 
-    Clock, 
-    ExternalLink,
-    ChevronRight,
-    MessageSquare,
-    Users,
-    Sliders,
-    Radio
+import {
+    ShieldAlert,
+    ShieldCheck,
+    Ticket,
+    ArrowRight,
+    Settings,
+    Activity,
+    Sparkles,
+    BarChart3,
+    Zap,
+    Clock,
 } from "lucide-react";
 import Link from "next/link";
+import { ServerModulesGrid, ServerModuleItem } from "@/components/dashboard/ServerModulesGrid";
 
 interface Props {
     params: Promise<{
@@ -102,11 +89,12 @@ export default async function ServerOverviewPage({ params }: Props) {
     const isKnowledgeActive = knowledgeBase.length > 0;
     const isCommandsActive = customCommands.length > 0;
 
-    const modules = [
+    const modules: ServerModuleItem[] = [
         {
+            category: "ia",
             title: "CoreBot IA",
-            subtitle: "Assistente inteligente com RAG e respostas contextuais",
-            icon: Bot,
+            subtitle: "Responde perguntas e conversa com os membros no chat.",
+            iconName: "bot",
             href: `/${locale}/dashboard/${guildId}/corebot`,
             isActive: isAiActive,
             theme: {
@@ -116,16 +104,29 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-purple-500/20",
                 badgeActive: "bg-purple-500/15 text-purple-300 border-purple-500/30",
             },
-            badges: [
-                { label: "Canal IA", value: config?.ia_channel_id ? `<#${config.ia_channel_id}>` : "Todos os canais permitidos" },
-                { label: "Temperatura", value: `${config?.ia_temperature || 0.7}` },
-                { label: "FAQs RAG", value: `${knowledgeBase.length} tópicos` }
-            ]
+            summary: config?.ia_channel_id ? "Canal definido" : "Todos os canais",
         },
         {
+            category: "media",
+            title: "Música",
+            subtitle: "Toca músicas na call e organiza a fila com o prefixo core!.",
+            iconName: "music",
+            href: `/${locale}/dashboard/${guildId}/music`,
+            isActive: true,
+            theme: {
+                gradient: "from-violet-500/15 via-fuchsia-500/5 to-transparent",
+                border: "border-violet-500/30 hover:border-violet-500/60",
+                iconBg: "bg-violet-500/15 border-violet-500/30 text-violet-400 group-hover:bg-violet-500 group-hover:text-white",
+                glow: "group-hover:shadow-violet-500/20",
+                badgeActive: "bg-violet-500/15 text-violet-300 border-violet-500/30",
+            },
+            summary: "Prefixo: core!",
+        },
+        {
+            category: "sec",
             title: "AutoMod & Segurança",
-            subtitle: "Proteção contra spam, raids, palavras impróprias e links",
-            icon: isAutoModActive ? ShieldCheck : ShieldAlert,
+            subtitle: "Bloqueia spam, links suspeitos e palavras proibidas.",
+            iconName: isAutoModActive ? "shield-check" : "shield-alert",
             href: `/${locale}/dashboard/${guildId}/automod`,
             isActive: isAutoModActive,
             theme: {
@@ -135,16 +136,13 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-rose-500/20",
                 badgeActive: "bg-rose-500/15 text-rose-300 border-rose-500/30",
             },
-            badges: [
-                { label: "Palavras Bloqueadas", value: `${config?.prohibited_words?.length || 0}` },
-                { label: "Ação Padrão", value: config?.automod_action?.toUpperCase() || "DELETE" },
-                { label: "Filtro de Links", value: config?.automod_links_enabled ? "Ativo" : "Desativado" }
-            ]
+            summary: `${config?.prohibited_words?.length || 0} palavras bloqueadas`,
         },
         {
-            title: "Tickets & Suporte",
-            subtitle: "Painel de atendimento, triagem automática e transcrições",
-            icon: Ticket,
+            category: "ops",
+            title: "Tickets",
+            subtitle: "Canais privados organizados para atender dúvidas.",
+            iconName: "ticket",
             href: `/${locale}/dashboard/${guildId}/tickets`,
             isActive: isTicketsActive,
             theme: {
@@ -154,16 +152,13 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-blue-500/20",
                 badgeActive: "bg-blue-500/15 text-blue-300 border-blue-500/30",
             },
-            badges: [
-                { label: "Categorias", value: `${ticketCategories.length} configuradas` },
-                { label: "Painel", value: config?.ticket_panel_title ? "Personalizado" : "Padrão" },
-                { label: "Canal de Logs", value: config?.ticket_logs_channel_id ? `<#${config.ticket_logs_channel_id}>` : "Não definido" }
-            ]
+            summary: `${ticketCategories.length} categorias`,
         },
         {
-            title: "Boas-vindas & Entrada",
-            subtitle: "Recepção com banner gerado por IA, canal e autorole",
-            icon: Hand,
+            category: "ops",
+            title: "Boas-vindas",
+            subtitle: "Recebe novos membros com imagem e cargo automático.",
+            iconName: "hand",
             href: `/${locale}/dashboard/${guildId}/welcome`,
             isActive: isWelcomeActive,
             theme: {
@@ -173,16 +168,13 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-emerald-500/20",
                 badgeActive: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
             },
-            badges: [
-                { label: "Canal de Entrada", value: config?.welcome_channel_id ? `<#${config.welcome_channel_id}>` : "Não definido" },
-                { label: "Autorole Automático", value: config?.autorole_id ? "Ativo" : "Não configurado" },
-                { label: "Canal de Saída", value: config?.leave_channel_id ? `<#${config.leave_channel_id}>` : "Desativado" }
-            ]
+            summary: config?.welcome_channel_id ? "Canal configurado" : "Não configurado",
         },
         {
+            category: "media",
             title: "Calls Privadas",
-            subtitle: "Salas de voz temporárias criadas sob demanda pelos membros",
-            icon: Phone,
+            subtitle: "Salas de voz temporárias criadas quando alguém entra.",
+            iconName: "phone",
             href: `/${locale}/dashboard/${guildId}/private-calls`,
             isActive: isCallsActive,
             theme: {
@@ -192,16 +184,13 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-cyan-500/20",
                 badgeActive: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
             },
-            badges: [
-                { label: "Categoria Raiz", value: config?.private_calls_category_id ? "Definida" : "Pendente" },
-                { label: "Salas Ativas", value: `${privateCalls.length} canais criados` },
-                { label: "Moderação de Call", value: config?.private_calls_manager_role ? "Com Cargo" : "Dono da Sala" }
-            ]
+            summary: `${privateCalls.length} salas ativas`,
         },
         {
-            title: "Base de Conhecimento",
-            subtitle: "Ensine a IA com perguntas e respostas customizadas",
-            icon: BookOpen,
+            category: "ia",
+            title: "Respostas da IA",
+            subtitle: "Ensine regras e respostas prontas para o bot usar.",
+            iconName: "book",
             href: `/${locale}/dashboard/${guildId}/knowledge`,
             isActive: isKnowledgeActive,
             theme: {
@@ -211,16 +200,13 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-fuchsia-500/20",
                 badgeActive: "bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30",
             },
-            badges: [
-                { label: "Tópicos Salvos", value: `${knowledgeBase.length} documentos` },
-                { label: "Modo de Resposta", value: "RAG Semântico" },
-                { label: "Status IA", value: isAiActive ? "Integrado" : "Aguardando IA" }
-            ]
+            summary: `${knowledgeBase.length} respostas salvas`,
         },
         {
-            title: "Comandos Customizados",
-            subtitle: "Crie novos comandos slash com respostas ricas e embeds",
-            icon: Terminal,
+            category: "ia",
+            title: "Comandos Custom",
+            subtitle: "Crie seus próprios comandos com / sem programar.",
+            iconName: "terminal",
             href: `/${locale}/dashboard/${guildId}/commands`,
             isActive: isCommandsActive,
             theme: {
@@ -230,11 +216,7 @@ export default async function ServerOverviewPage({ params }: Props) {
                 glow: "group-hover:shadow-amber-500/20",
                 badgeActive: "bg-amber-500/15 text-amber-300 border-amber-500/30",
             },
-            badges: [
-                { label: "Comandos Ativos", value: `${customCommands.length} criados` },
-                { label: "Tipo de Registro", value: "Slash (/)" },
-                { label: "Execução", value: "Instantânea" }
-            ]
+            summary: `${customCommands.length} comandos`,
         }
     ];
 
@@ -254,24 +236,23 @@ export default async function ServerOverviewPage({ params }: Props) {
 
                 <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
                     <div className="space-y-3 max-w-2xl">
-                        {/* Status Pill do Bot */}
                         <div className="flex flex-wrap items-center gap-2.5">
                             {botStatus.inGuild ? (
                                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
                                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                    <span>Bot Conectado & Operacional</span>
+                                    <span>Bot Online</span>
                                 </div>
                             ) : (
                                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">
                                     <span className="w-2 h-2 rounded-full bg-red-400" />
-                                    <span>Bot Não Encontrado no Servidor</span>
+                                    <span>Bot fora do servidor</span>
                                 </div>
                             )}
 
                             {botStatus.hasAdministrator && (
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-semibold">
                                     <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
-                                    Permissões de Administrador OK
+                                    Admin OK
                                 </span>
                             )}
                         </div>
@@ -280,7 +261,7 @@ export default async function ServerOverviewPage({ params }: Props) {
                             Visão Geral do Servidor
                         </h1>
                         <p className="text-sm sm:text-base text-zinc-400 leading-relaxed">
-                            Hub central de controle e automação. Monitore a saúde do bot, gerencie recursos de IA, segurança, tickets e ative novos módulos em tempo real.
+                            Gerencie a IA, música, segurança e atendimento do seu servidor em um só lugar.
                         </p>
                     </div>
 
@@ -291,14 +272,14 @@ export default async function ServerOverviewPage({ params }: Props) {
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-bold transition-all border border-white/10 shadow-md cursor-pointer"
                         >
                             <BarChart3 className="w-4 h-4 text-purple-400" />
-                            <span>Métricas</span>
+                            <span>Estatísticas</span>
                         </Link>
                         <Link
                             href={`/${locale}/dashboard/${guildId}/activity`}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white text-xs font-bold transition-all border border-white/10 shadow-md cursor-pointer"
                         >
                             <Activity className="w-4 h-4 text-indigo-400" />
-                            <span>Auditoria</span>
+                            <span>Atividades</span>
                         </Link>
                         <Link
                             href={`/${locale}/dashboard/${guildId}/settings`}
@@ -310,11 +291,8 @@ export default async function ServerOverviewPage({ params }: Props) {
                     </div>
                 </div>
 
-                {/* ═══════════════════════════════════════════════════════════ */}
-                {/* 📊 BARRA DE PRONTIDÃO & INDICADORES RÁPIDOS                  */}
-                {/* ═══════════════════════════════════════════════════════════ */}
+                {/* Indicadores rápidos */}
                 <div className="relative z-10 mt-8 pt-8 border-t border-white/10 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-                    {/* 1. Módulos Operacionais */}
                     <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-2">
                         <div className="flex items-center justify-between text-xs text-zinc-400">
                             <span>Módulos Ativos</span>
@@ -326,140 +304,54 @@ export default async function ServerOverviewPage({ params }: Props) {
                                 style={{ width: `${readinessPercentage}%` }}
                             />
                         </div>
-                        <p className="text-[11px] text-zinc-500">{readinessPercentage}% de prontidão total</p>
+                        <p className="text-[11px] text-zinc-500">{readinessPercentage}% configurado</p>
                     </div>
 
-                    {/* 2. Status do AutoMod */}
                     <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-1">
                         <span className="text-xs text-zinc-400 flex items-center gap-1.5">
                             <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                            Segurança
+                            Proteção
                         </span>
                         <div className="text-lg font-bold text-white">
-                            {isAutoModActive ? "Protegido" : "Básico"}
+                            {isAutoModActive ? "Ativa" : "Básica"}
                         </div>
                         <p className="text-[11px] text-zinc-500">
-                            {config?.prohibited_words?.length || 0} palavras restritas
+                            {config?.prohibited_words?.length || 0} palavras bloqueadas
                         </p>
                     </div>
 
-                    {/* 3. Base de Conhecimento IA */}
                     <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-1">
                         <span className="text-xs text-zinc-400 flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                            Cérebro IA
+                            Respostas da IA
                         </span>
                         <div className="text-lg font-bold text-white">
-                            {knowledgeBase.length} FAQs
+                            {knowledgeBase.length} salvas
                         </div>
                         <p className="text-[11px] text-zinc-500">
-                            {isAiActive ? "IA respondendo aos membros" : "IA em modo silencioso"}
+                            {isAiActive ? "Respondendo no chat" : "Pausada no momento"}
                         </p>
                     </div>
 
-                    {/* 4. Atendimento & Tickets */}
                     <div className="p-4 rounded-2xl bg-black/40 border border-white/5 space-y-1">
                         <span className="text-xs text-zinc-400 flex items-center gap-1.5">
                             <Ticket className="w-3.5 h-3.5 text-blue-400" />
-                            Atendimento
+                            Tickets
                         </span>
                         <div className="text-lg font-bold text-white">
                             {ticketCategories.length} Categorias
                         </div>
                         <p className="text-[11px] text-zinc-500">
-                            {config?.ticket_panel_title ? "Painel ativo" : "Sem painel customizado"}
+                            {config?.ticket_panel_title ? "Painel pronto" : "Sem painel ainda"}
                         </p>
                     </div>
                 </div>
             </div>
 
             {/* ═══════════════════════════════════════════════════════════ */}
-            {/* 🎛️ GRADE DE MÓDULOS REDESENHADA (CARDS PREMIUM)            */}
+            {/* 🎛️ GRADE DE MÓDULOS REDESENHADA (CARDS PREMIUM BENTO)       */}
             {/* ═══════════════════════════════════════════════════════════ */}
-            <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
-                            <Layers className="w-5 h-5 text-purple-400" />
-                            Módulos do Servidor
-                        </h2>
-                        <p className="text-xs text-zinc-400">
-                            Configure cada recurso de forma individual e potencialize sua comunidade.
-                        </p>
-                    </div>
-                    <span className="text-xs text-zinc-500 font-mono">
-                        {modules.length} recursos disponíveis
-                    </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {modules.map((module) => (
-                        <Link
-                            key={module.title}
-                            href={module.href}
-                            className={`group relative flex flex-col p-6 rounded-3xl bg-[#0C0B10] border transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 overflow-hidden ${module.theme.border} ${module.theme.glow}`}
-                        >
-                            {/* Gradiente sutil de fundo no hover */}
-                            <div className={`absolute inset-0 bg-gradient-to-br ${module.theme.gradient} opacity-40 group-hover:opacity-100 transition-opacity rounded-3xl pointer-events-none`} />
-
-                            <div className="relative z-10 flex flex-col h-full space-y-5">
-                                {/* Topo do Card: Ícone e Status Badge */}
-                                <div className="flex items-start justify-between">
-                                    <div className={`w-12 h-12 rounded-2xl border flex items-center justify-center transition-all duration-300 shadow-md ${module.theme.iconBg}`}>
-                                        <module.icon className="w-6 h-6" />
-                                    </div>
-
-                                    <div className="flex items-center gap-2">
-                                        {module.isActive ? (
-                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-sm ${module.theme.badgeActive}`}>
-                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                                ATIVO
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-zinc-900 text-zinc-400 border border-white/5">
-                                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-500" />
-                                                INATIVO
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Título & Descrição */}
-                                <div>
-                                    <h3 className="font-bold text-lg text-white group-hover:text-white transition-colors flex items-center justify-between">
-                                        <span>{module.title}</span>
-                                        <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-white group-hover:translate-x-1 transition-all" />
-                                    </h3>
-                                    <p className="text-xs text-zinc-400 mt-1 line-clamp-2 leading-relaxed">
-                                        {module.subtitle}
-                                    </p>
-                                </div>
-
-                                {/* Lista de Métricas/Badges com Tipografia Refinada */}
-                                <div className="space-y-2 pt-2">
-                                    {module.badges.map((b, i) => (
-                                        <div 
-                                            key={i} 
-                                            className="flex items-center justify-between p-2.5 rounded-xl bg-black/40 border border-white/5 text-xs"
-                                        >
-                                            <span className="text-zinc-400 font-medium">{b.label}</span>
-                                            <span className="font-mono text-zinc-200 font-semibold truncate max-w-[150px]" title={b.value}>
-                                                {b.value}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                {/* Rodapé com Link de Configuração */}
-                                <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between text-xs text-zinc-400 group-hover:text-purple-300 font-semibold transition-colors">
-                                    <span>Gerenciar Configurações</span>
-                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1.5 transition-transform" />
-                                </div>
-                            </div>
-                        </Link>
-                    ))}
-                </div>
-            </div>
+            <ServerModulesGrid modules={modules} />
 
             {/* ═══════════════════════════════════════════════════════════ */}
             {/* 📜 HISTÓRICO RECENTE & DICAS DE OTIMIZAÇÃO                    */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { use, useState, useEffect } from 'react';
 import { usePlan, PlanGate } from '@/components/PlanGate';
 import { AnalyticsHeader } from '@/components/analytics/AnalyticsHeader';
 import { PeriodToggle } from '@/components/analytics/PeriodToggle';
@@ -40,27 +40,31 @@ interface Props {
 
 export default function AnalyticsPage({ params }: Props) {
     const { plan } = usePlan();
-    const [guildId, setGuildId] = useState('');
+    const resolvedParams = use(params);
+    const guildId = resolvedParams.guildId;
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [period, setPeriod] = useState(7);
     const [loading, setLoading] = useState(true);
 
-    // Resolve URL params
-    useEffect(() => {
-        params.then(p => setGuildId(p.guildId));
-    }, [params]);
-
     // Data Fetching
     useEffect(() => {
         if (!guildId) return;
-        setLoading(true);
+        let isCurrent = true;
         fetch(`/api/guild/${guildId}/analytics?period=${period}`)
             .then(r => r.json())
             .then(d => { 
-                setData(d); 
-                setLoading(false); 
+                if (isCurrent) {
+                    setData(d); 
+                    setLoading(false); 
+                }
             })
-            .catch(() => setLoading(false));
+            .catch(() => {
+                if (isCurrent) setLoading(false);
+            });
+
+        return () => {
+            isCurrent = false;
+        };
     }, [guildId, period]);
 
     const isCompletelyEmpty = data?.summary && Object.values(data.summary).every(val => val === 0);
@@ -75,7 +79,7 @@ export default function AnalyticsPage({ params }: Props) {
                     <AnalyticsSkeleton />
                 ) : (
                     <div className="w-full relative">
-                        <PeriodToggle period={period} setPeriod={setPeriod} />
+                        <PeriodToggle period={period} setPeriod={(p) => { setLoading(true); setPeriod(p); }} />
 
                         {isCompletelyEmpty ? (
                             <AnalyticsEmptyState />

@@ -78,14 +78,18 @@ export function CheckoutModal({
 
     // Abre a popup inicial quando a URL estiver pronta
     useEffect(() => {
+        let timer: NodeJS.Timeout | null = null;
         if (isOpen && checkoutUrl) {
             hasSucceededRef.current = false;
-            setStatus('waiting');
-            setErrorMessage(null);
             openPopup(checkoutUrl);
+            timer = setTimeout(() => {
+                setStatus('waiting');
+                setErrorMessage(null);
+            }, 0);
         }
 
         return () => {
+            if (timer) clearTimeout(timer);
             if (pollIntervalRef.current) {
                 clearInterval(pollIntervalRef.current);
             }

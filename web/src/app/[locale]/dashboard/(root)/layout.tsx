@@ -34,7 +34,7 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
                     <div className="relative w-8 h-8">
                         <Image src="/CoreBot.png" alt="CoreBot Logo" fill className="object-contain" />
                     </div>
-                    <span className="font-bold text-lg">CoreBot's</span>
+                    <span className="font-bold text-lg">CoreBot&apos;s</span>
                 </div>
             </div>
 

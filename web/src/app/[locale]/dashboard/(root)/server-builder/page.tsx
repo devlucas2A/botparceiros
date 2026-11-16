@@ -275,7 +275,6 @@ function SortableCategory({
                                     onClick={() => { onAddChannel(category.id, type); setShowAddMenu(false); }}
                                     className="flex items-center gap-3 px-3 py-2 text-xs font-medium text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors bg-white/5 border border-white/5"
                                 >
-                                    {/* @ts-ignore */}
                                     <span className={type === 'voice' || type === 'stage' ? 'text-green-400' : 'text-zinc-400'}>{CHANNEL_ICONS[type]}</span>
                                     {CHANNEL_TYPE_LABELS[type]}
                                 </button>
@@ -384,12 +383,12 @@ export default function ServerBuilderPage() {
                 const data = await res.json();
                 if (data.schema) {
                     let counter = 0;
-                    const addIds = (s: any): ServerSchema => ({
-                        roles: (s.roles || []).map((r: any) => ({ ...r, id: `ai_r_${++counter}` })),
-                        categories: (s.categories || []).map((cat: any) => ({
+                    const addIds = (s: Partial<ServerSchema>): ServerSchema => ({
+                        roles: (s.roles || []).map((r: ServerRole) => ({ ...r, id: `ai_r_${++counter}` })),
+                        categories: (s.categories || []).map((cat: ServerCategory) => ({
                             ...cat,
                             id: `ai_cat_${++counter}`,
-                            channels: (cat.channels || []).map((ch: any) => ({
+                            channels: (cat.channels || []).map((ch: ServerChannel) => ({
                                 ...ch,
                                 id: `ai_ch_${++counter}`,
                             })),

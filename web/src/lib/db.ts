@@ -1,4 +1,4 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { Pool, QueryResult, QueryResultRow } from 'pg';
 
 let pool: Pool | null = null;
 
@@ -34,8 +34,8 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
     const pool = getPool();
     try {
         return await pool.query<T>(text, params);
-    } catch (error: any) {
-        console.error(`Database Error: ${error.message} (Query: ${text})`);
+    } catch (error: unknown) {
+        console.error(`Database Error: ${(error as Error).message} (Query: ${text})`);
         throw error;
     }
 }

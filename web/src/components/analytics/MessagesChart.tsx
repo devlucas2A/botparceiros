@@ -11,6 +11,27 @@ interface MessagesChartProps {
     data: DailyData[];
 }
 
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{ value: number; [key: string]: unknown }>;
+    label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+    if (active && payload && payload.length) {
+        return (
+            <div className="bg-glass px-4 py-3 rounded-xl shadow-2xl border border-white/10 text-sm relative z-50">
+                <div className="text-zinc-400 mb-1 font-medium">{label}</div>
+                <div className="text-white flex items-center gap-2 font-bold text-lg">
+                    <span className="w-2 h-2 rounded-full bg-teal-400" />
+                    {payload[0].value.toLocaleString('pt-BR')} <span className="text-xs font-normal text-zinc-500">msgs</span>
+                </div>
+            </div>
+        );
+    }
+    return null;
+}
+
 export function MessagesChart({ data }: MessagesChartProps) {
     const prefersReducedMotion = useReducedMotionSafe();
 
@@ -33,20 +54,7 @@ export function MessagesChart({ data }: MessagesChartProps) {
         };
     });
 
-    const CustomTooltip = ({ active, payload, label }: any) => {
-        if (active && payload && payload.length) {
-            return (
-                <div className="bg-glass px-4 py-3 rounded-xl shadow-2xl border border-white/10 text-sm relative z-50">
-                    <div className="text-zinc-400 mb-1 font-medium">{label}</div>
-                    <div className="text-white flex items-center gap-2 font-bold text-lg">
-                        <span className="w-2 h-2 rounded-full bg-teal-400" />
-                        {payload[0].value.toLocaleString('pt-BR')} <span className="text-xs font-normal text-zinc-500">msgs</span>
-                    </div>
-                </div>
-            );
-        }
-        return null;
-    };
+
 
     return (
         <div className="w-full bg-[#0A0A0C] border border-white/10 rounded-2xl p-6 h-[400px] flex flex-col hover:border-white/20 transition-colors z-10 relative">

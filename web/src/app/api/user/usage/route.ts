@@ -22,14 +22,11 @@ const SERVER_GEN_LIMITS: Record<PlanTier, number> = {
 
 export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
 
-    // @ts-ignore
-    if (!session || !session.user?.id) {
+    if (!session || !userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    // @ts-ignore
-    const userId = session.user.id;
 
     const searchParams = req.nextUrl.searchParams;
     const refresh = searchParams.get('refresh') === 'true';

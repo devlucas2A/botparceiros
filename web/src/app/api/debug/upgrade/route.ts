@@ -9,7 +9,6 @@ export async function GET(request: Request) {
     }
 
     const session = await getServerSession(authOptions);
-    // @ts-ignore
     const userId = session?.user?.id;
 
     if (!userId) {
@@ -30,7 +29,7 @@ export async function GET(request: Request) {
         `, [`mock_starter_${Date.now()}`, userId, plan.toLowerCase()]);
 
         return NextResponse.redirect(new URL('/dashboard', request.url));
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+    } catch (e: unknown) {
+        return NextResponse.json({ error: (e as Error).message }, { status: 500 });
     }
 }

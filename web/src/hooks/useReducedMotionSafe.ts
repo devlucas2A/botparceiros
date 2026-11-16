@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
 import { useReducedMotion } from 'framer-motion';
+
+const emptySubscribe = () => () => {};
 
 /**
  * Wrapper for Framer Motion's useReducedMotion that respects SSR
@@ -8,11 +10,11 @@ import { useReducedMotion } from 'framer-motion';
  */
 export function useReducedMotionSafe() {
     const prefersReducedMotion = useReducedMotion();
-    const [isSafe, setIsSafe] = useState(false);
+    const isClient = useSyncExternalStore(
+        emptySubscribe,
+        () => true,
+        () => false
+    );
 
-    useEffect(() => {
-        setIsSafe(true);
-    }, []);
-
-    return isSafe ? prefersReducedMotion : false;
+    return isClient ? prefersReducedMotion : false;
 }

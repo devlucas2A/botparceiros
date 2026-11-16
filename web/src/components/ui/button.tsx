@@ -1,12 +1,6 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-// Utility function (usually in lib/utils.ts, but inlining here if utils missing, or assuming utils usage)
-// I will assume lib/utils exists or create it next if needed.
-// For safety, I'll use a local cn function if imports fail, but standard is @/lib/utils
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(

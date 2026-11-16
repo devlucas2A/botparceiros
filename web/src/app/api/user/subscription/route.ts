@@ -5,14 +5,14 @@ import { database } from "@shared/services/database";
 
 export async function GET() {
     const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
 
-    // @ts-ignore - accessToken is added by NextAuth callbacks
-    if (!session || !session.user?.id) {
+    if (!session || !userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     try {
-        const subscription = await database.getSubscriptionByUser(session.user.id);
+        const subscription = await database.getSubscriptionByUser(userId);
 
         if (!subscription) {
             return NextResponse.json({ subscription: null });

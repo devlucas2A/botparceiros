@@ -1,8 +1,9 @@
+import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin();
 
-const nextConfig = {
+const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
@@ -19,7 +20,7 @@ const nextConfig = {
   },
   serverExternalPackages: ['discord.js', '@discordjs/ws', 'zlib-sync', 'utf-8-validate', 'bufferutil'],
 
-  webpack: (config: any, { isServer }: { isServer: boolean }) => {
+  webpack: (config, { isServer }) => {
     // Client-side: Alias false to ignore
     config.resolve.alias = {
       ...config.resolve.alias,

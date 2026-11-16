@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, ReactNode } from 'react';
+import Link from 'next/link';
 import { Lock, ArrowUpRight } from 'lucide-react';
 
 type PlanTier = 'free' | 'starter' | 'pro' | 'ultimate';
@@ -105,13 +106,13 @@ export function PlanGate({
                         Esta funcionalidade requer o plano <strong className="text-white">{PLAN_NAMES[required]}</strong> ou superior.
                         Seu plano atual: <strong className="text-zinc-300">{PLAN_NAMES[plan]}</strong>.
                     </p>
-                    <a
+                    <Link
                         href="/dashboard/billing"
                         className="inline-flex items-center gap-2 px-6 py-3 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-medium rounded-xl transition-all text-sm"
                     >
                         Fazer Upgrade
                         <ArrowUpRight className="w-4 h-4" />
-                    </a>
+                    </Link>
                 </div>
             </div>
         </div>

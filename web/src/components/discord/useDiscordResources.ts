@@ -60,34 +60,35 @@ async function fetchResources(guildId: string, attempt = 0): Promise<DiscordReso
     }
 
     const body = await res.json().catch(() => ({}));
-    const err: any = new Error(body?.error || `Erro ${res.status}`);
+    const err = new Error(body?.error || `Erro ${res.status}`) as Error & { status?: number; botMissing?: boolean };
     err.status = res.status;
     err.botMissing = !!body?.botMissing;
     throw err;
 }
 
 export function useDiscordResources(guildId: string): State {
-    const [state, setState] = useState<State>({
+    const [prevGuildId, setPrevGuildId] = useState(guildId);
+    const [state, setState] = useState<State>(() => ({
         data: memoryCache.get(guildId) || null,
         loading: !memoryCache.has(guildId),
         error: null,
         botMissing: false,
-    });
+    }));
+
+    if (guildId !== prevGuildId) {
+        setPrevGuildId(guildId);
+        setState({
+            data: memoryCache.get(guildId) || null,
+            loading: !memoryCache.has(guildId),
+            error: null,
+            botMissing: false,
+        });
+    }
 
     useEffect(() => {
-        if (!guildId) return;
-        if (memoryCache.has(guildId)) {
-            setState({
-                data: memoryCache.get(guildId)!,
-                loading: false,
-                error: null,
-                botMissing: false,
-            });
-            return;
-        }
+        if (!guildId || memoryCache.has(guildId)) return;
 
         let cancelled = false;
-        setState(s => ({ ...s, loading: true, error: null }));
 
         // Dedupe: reutiliza a Promise em andamento se houver
         let promise = inflightCache.get(guildId);

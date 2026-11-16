@@ -1,6 +1,6 @@
 FROM node:20-bookworm-slim
 
-# Instala bibliotecas do sistema necessárias (muito importante para o pacote 'canvas' do bot Welcome)
+# Instala bibliotecas do sistema necessárias (canvas + curl + yt-dlp para módulo de música)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y \
     libgif-dev \
     librsvg2-dev \
     python3 \
+    curl \
+    && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 # Define o diretório de trabalho dentro do container

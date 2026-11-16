@@ -6,7 +6,7 @@ export const authOptions: NextAuthOptions = {
         DiscordProvider({
             clientId: process.env.DISCORD_CLIENT_ID ?? "",
             clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
-            issuer: "https://discord.com/api/oauth2",
+            issuer: "https://discord.com",
             authorization: { params: { scope: 'identify email guilds' } },
         }),
     ],
@@ -44,16 +44,16 @@ export const authOptions: NextAuthOptions = {
 
             return baseUrl;
         },
-        async jwt({ token, account }: any) {
+        async jwt({ token, account }) {
             if (account) {
                 token.accessToken = account.access_token;
             }
             return token;
         },
-        async session({ session, token }: any) {
+        async session({ session, token }) {
             if (session?.user) {
-                session.user.id = token.sub;
-                session.accessToken = token.accessToken;
+                (session.user as { id?: string }).id = token.sub;
+                (session as unknown as { accessToken?: unknown }).accessToken = token.accessToken;
             }
             return session;
         },

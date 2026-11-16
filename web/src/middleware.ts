@@ -35,14 +35,14 @@ export default async function middleware(req: NextRequest) {
     if (isPublicPage) {
         response = intlMiddleware(req);
     } else {
-        response = (authMiddleware as any)(req);
+        response = (authMiddleware as unknown as (r: NextRequest) => NextResponse)(req) || NextResponse.next();
     }
 
     // A Railway injeta o host com a porta 8080 internamente.
     // Isso faz com que redirects (301/302) gerados venham com a porta 8080 ou como localhost em prod.
     // Essa correção intercepta o redirect e ajusta a URL apenas quando necessário.
     if (response && response.status >= 300 && response.status < 400) {
-        let location = response.headers.get('location');
+        const location = response.headers.get('location');
         if (location) {
             const forwardedHost = req.headers.get('x-forwarded-host')?.split(',')[0]?.trim() || req.headers.get('host')?.split(',')[0]?.trim();
             const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim() || 'https';
@@ -68,7 +68,7 @@ export default async function middleware(req: NextRequest) {
                     parsedLocation.port = parsedProdUrl.port;
                     
                     response.headers.set('location', parsedLocation.toString());
-                } catch (e) {
+                } catch {
                     if (hasPort) {
                         response.headers.set('location', location.replace(':8080', ''));
                     }
