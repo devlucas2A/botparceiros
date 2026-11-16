@@ -113,12 +113,16 @@ class GuildQueue {
         this.currentTrack = nextTrack;
         try {
             const connection = this.connect();
-            if (connection.state.status !== voice_1.VoiceConnectionStatus.Ready) {
-                await (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 15_000);
-            }
-            const resource = await (0, extractor_1.createAudioStream)(nextTrack);
+            const waitReady = connection.state.status !== voice_1.VoiceConnectionStatus.Ready
+                ? (0, voice_1.entersState)(connection, voice_1.VoiceConnectionStatus.Ready, 15_000)
+                : Promise.resolve(connection);
+            const [, resource] = await Promise.all([waitReady, (0, extractor_1.createAudioStream)(nextTrack)]);
             this.player.play(resource);
             this.sendNowPlayingEmbed(nextTrack);
+            // Pré-aquece a próxima faixa da fila para troca instantânea
+            if (this.tracks.length > 0) {
+                (0, extractor_1.prewarmTrack)(this.tracks[0]);
+            }
             return true;
         }
         catch (error) {

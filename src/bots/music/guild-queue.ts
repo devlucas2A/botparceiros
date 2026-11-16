@@ -10,7 +10,7 @@ import {
 } from '@discordjs/voice';
 import { EmbedBuilder, TextBasedChannel, VoiceBasedChannel } from 'discord.js';
 import { LoopMode, Track } from './types';
-import { createAudioStream } from './extractor';
+import { createAudioStream, prewarmTrack } from './extractor';
 import { logger } from '../../shared/services';
 
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos de fila vazia
@@ -145,12 +145,20 @@ export class GuildQueue {
 
         try {
             const connection = this.connect();
-            if (connection.state.status !== VoiceConnectionStatus.Ready) {
-                await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
-            }
-            const resource = await createAudioStream(nextTrack);
+            const waitReady =
+                connection.state.status !== VoiceConnectionStatus.Ready
+                    ? entersState(connection, VoiceConnectionStatus.Ready, 15_000)
+                    : Promise.resolve(connection);
+
+            const [, resource] = await Promise.all([waitReady, createAudioStream(nextTrack)]);
             this.player.play(resource);
             this.sendNowPlayingEmbed(nextTrack);
+
+            // Pré-aquece a próxima faixa da fila para troca instantânea
+            if (this.tracks.length > 0) {
+                prewarmTrack(this.tracks[0]);
+            }
+
             return true;
         } catch (error: unknown) {
             const err = error as Error;

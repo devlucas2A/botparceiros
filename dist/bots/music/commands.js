@@ -97,6 +97,9 @@ exports.playCommand = {
                 await queue.playNext();
             }
             else {
+                if (queue.tracks.length === 1) {
+                    (0, extractor_1.prewarmTrack)(queue.tracks[0]);
+                }
                 const embed = new discord_js_1.EmbedBuilder()
                     .setColor(0x57F287)
                     .setTitle('✅ Adicionado à Fila')
@@ -123,6 +126,9 @@ exports.playCommand = {
             await searchMsg.edit({ embeds: [embed] });
             if (!wasPlaying) {
                 await queue.playNext();
+            }
+            else if (queue.tracks.length > 0) {
+                (0, extractor_1.prewarmTrack)(queue.tracks[0]);
             }
         }
     }

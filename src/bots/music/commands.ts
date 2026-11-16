@@ -1,7 +1,7 @@
 import { EmbedBuilder, GuildMember, Message, PermissionFlagsBits } from 'discord.js';
 import { MusicCommand } from './types';
 import { musicManager } from './music.manager';
-import { formatDuration, resolveTracks } from './extractor';
+import { formatDuration, prewarmTrack, resolveTracks } from './extractor';
 
 /**
  * Cria uma barra de progresso visual para a música atual
@@ -104,6 +104,9 @@ export const playCommand: MusicCommand = {
                 await searchMsg.delete().catch(() => {});
                 await queue.playNext();
             } else {
+                if (queue.tracks.length === 1) {
+                    prewarmTrack(queue.tracks[0]);
+                }
                 const embed = new EmbedBuilder()
                     .setColor(0x57F287)
                     .setTitle('✅ Adicionado à Fila')
@@ -140,6 +143,8 @@ export const playCommand: MusicCommand = {
 
             if (!wasPlaying) {
                 await queue.playNext();
+            } else if (queue.tracks.length > 0) {
+                prewarmTrack(queue.tracks[0]);
             }
         }
     }

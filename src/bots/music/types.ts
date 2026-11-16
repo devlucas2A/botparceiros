@@ -12,7 +12,7 @@ export interface Track {
     thumbnail?: string;
     author?: string;
     requestedBy: GuildMember;
-    source: 'youtube' | 'soundcloud' | 'spotify' | 'direct';
+    source: 'youtube' | 'soundcloud' | 'spotify' | 'deezer' | 'direct';
 }
 
 export interface GuildQueueState {
